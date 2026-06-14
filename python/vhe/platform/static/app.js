@@ -138,7 +138,7 @@ function renderPairs(pairPlans) {
         <div class="plan-meta">
           <div><span>Z-score</span><strong>${fmt.format(plan.zscore)}</strong></div>
           <div><span>Spread</span><strong>${fmt.format(plan.spread)}</strong></div>
-          <div><span>Reason</span><strong>${plan.reason}</strong></div>
+          <div><span>Qty A/B</span><strong>${plan.quantity_a || 0}/${plan.quantity_b || 0}</strong></div>
         </div>
       </article>
     `)

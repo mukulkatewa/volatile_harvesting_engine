@@ -5,7 +5,6 @@ from vhe.strategies.pair_spread import PairConfig, PairInputs, PairSpreadStrateg
 from vhe.strategies.regime import MarketRegime
 
 
-
 def _quote(symbol: str, price: float) -> LiveQuote:
     return LiveQuote(
         timestamp=datetime.now(tz=timezone.utc),
@@ -17,7 +16,6 @@ def _quote(symbol: str, price: float) -> LiveQuote:
         close=price,
         volume=100_000,
     )
-
 
 
 def test_pair_spread_strategy_generates_short_a_long_b_when_spread_high() -> None:
@@ -32,7 +30,6 @@ def test_pair_spread_strategy_generates_short_a_long_b_when_spread_high() -> Non
     assert [order.reason for order in orders] == ["pair_short_a", "pair_long_b"]
 
 
-
 def test_pair_spread_strategy_waits_inside_band() -> None:
     strategy = PairSpreadStrategy(PairConfig("AAA", "BBB", hedge_ratio=1.0, mean=0.0, std=0.5, entry_z=1.5))
     plan = strategy.build_plan(PairInputs(_quote("AAA", 101), _quote("BBB", 100), MarketRegime.RANGE))
@@ -43,10 +40,40 @@ def test_pair_spread_strategy_waits_inside_band() -> None:
 
 def test_pair_spread_strategy_does_not_reenter_when_position_open() -> None:
     strategy = PairSpreadStrategy(PairConfig("AAA", "BBB", hedge_ratio=1.0, mean=0.0, std=0.01, entry_z=1.5))
-    inputs = PairInputs(_quote("AAA", 102), _quote("BBB", 100), MarketRegime.RANGE, current_position=-4)
+    inputs = PairInputs(_quote("AAA", 102), _quote("BBB", 100), MarketRegime.RANGE, quantity_a=-4, quantity_b=4)
 
     plan = strategy.build_plan(inputs)
 
     assert plan.enabled is False
     assert plan.action == "WAIT"
     assert plan.reason == "position_open"
+
+
+def test_pair_spread_strategy_exits_open_pair_near_mean() -> None:
+    strategy = PairSpreadStrategy(PairConfig("AAA", "BBB", hedge_ratio=1.0, mean=0.0, std=0.01, exit_z=0.25))
+    inputs = PairInputs(_quote("AAA", 100), _quote("BBB", 100), MarketRegime.RANGE, quantity_a=-4, quantity_b=4)
+
+    plan = strategy.build_plan(inputs)
+    orders = strategy.orders_from_plan(plan, inputs.quote_a, inputs.quote_b)
+
+    assert plan.enabled is True
+    assert plan.action == "EXIT"
+    assert [(order.symbol, order.side.value, order.quantity, order.reason) for order in orders] == [
+        ("AAA", "BUY", 4, "pair_exit_a"),
+        ("BBB", "SELL", 4, "pair_exit_b"),
+    ]
+
+
+def test_pair_spread_strategy_hard_stop_closes_open_pair() -> None:
+    strategy = PairSpreadStrategy(PairConfig("AAA", "BBB", hedge_ratio=1.0, mean=0.0, std=0.01, max_abs_z=3.0))
+    inputs = PairInputs(_quote("AAA", 105), _quote("BBB", 100), MarketRegime.RANGE, quantity_a=4, quantity_b=-4)
+
+    plan = strategy.build_plan(inputs)
+    orders = strategy.orders_from_plan(plan, inputs.quote_a, inputs.quote_b)
+
+    assert plan.enabled is True
+    assert plan.action == "STOP"
+    assert [(order.symbol, order.side.value, order.quantity, order.reason) for order in orders] == [
+        ("AAA", "SELL", 4, "pair_exit_a"),
+        ("BBB", "BUY", 4, "pair_exit_b"),
+    ]

@@ -165,3 +165,13 @@ Useful takeaway:
 - VHE implementation implication: multi-leg order submission must look up each leg quote by symbol, not reuse the latest tick from one leg.
 - Paper execution now supports simulated short quantities so pair spread tests can model short-a-long-b and long-a-short-b flows before live broker routing exists.
 - Live deployment implication: Indian cash-equity shorts are intraday constrained, so this module must remain paper-only until position reconciliation, order-book reconciliation, exchange segment rules, and end-of-day square-off controls are implemented.
+
+## 2026-06-15: Atomic Pair Paper Execution
+
+Useful takeaway:
+
+- Multi-leg strategies must not be simulated as independent single orders because a rejected leg can create false one-sided exposure.
+- VHE implementation implication: pair spread orders now route through an all-or-none paper batch. Every leg is previewed for quote availability, limit fillability, duplicate order ids, cash, and risk before any fill mutates paper state.
+- Pair plans now carry actual paper quantities for both legs. `EXIT` and `STOP` close those exact quantities instead of guessing from configured capital.
+- Single-name grid and momentum engines remain isolated from configured pair symbols so they cannot accidentally reduce or flip a pair leg.
+- Live deployment implication: this is still not sufficient for real orders because live brokers do not guarantee atomic exchange execution across two equity legs. The live path needs order-state reconciliation, timeout cancellation, failed-leg hedge cleanup, and end-of-day square-off before being enabled.

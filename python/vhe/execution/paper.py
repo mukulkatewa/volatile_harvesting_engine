@@ -35,36 +35,39 @@ class PaperBroker:
         self.cash = self.initial_cash
 
     def submit(self, order: Order, quote: LiveQuote) -> Fill | None:
-        if order.order_id in self.seen_order_ids:
+        fill = self._preview_fill(order, quote, available_cash=self.cash)
+        if fill is None:
             return None
         self.seen_order_ids.add(order.order_id)
-
-        if order.side == OrderSide.BUY and quote.ltp > order.price:
-            return None
-        if order.side == OrderSide.SELL and quote.ltp < order.price:
-            return None
-
-        quantity = min(order.quantity, max(int(quote.volume * 0.01), 1))
-        if quantity <= 0:
-            return None
-
-        fees = self.cost_model.estimate(side=order.side, price=quote.ltp, quantity=quantity)
-        notional = quote.ltp * quantity
-        if order.side == OrderSide.BUY and self.cash < notional + fees:
-            return None
-
-        fill = Fill(
-            order_id=order.order_id,
-            symbol=order.symbol,
-            side=order.side,
-            price=quote.ltp,
-            quantity=quantity,
-            timestamp=quote.timestamp,
-            fees=fees,
-            reason=order.reason,
-        )
         self._apply_fill(fill)
         return fill
+
+    def submit_atomic(self, orders: list[Order], quotes: dict[str, LiveQuote]) -> list[Fill]:
+        if not orders:
+            return []
+        order_ids = [order.order_id for order in orders]
+        if len(order_ids) != len(set(order_ids)):
+            return []
+
+        available_cash = self.cash
+        fills: list[Fill] = []
+        for order in orders:
+            quote = quotes.get(order.symbol)
+            if quote is None:
+                return []
+            fill = self._preview_fill(order, quote, available_cash=available_cash)
+            if fill is None:
+                return []
+            fills.append(fill)
+            if order.side == OrderSide.BUY:
+                available_cash -= fill.price * fill.quantity + fill.fees
+            else:
+                available_cash += fill.price * fill.quantity - fill.fees
+
+        for fill in fills:
+            self.seen_order_ids.add(fill.order_id)
+            self._apply_fill(fill)
+        return fills
 
     def snapshot(self, quotes: dict[str, LiveQuote]) -> dict:
         equity = self.cash
@@ -101,6 +104,34 @@ class PaperBroker:
             "positions": positions,
             "fills": [asdict(fill) for fill in self.fills[-25:]],
         }
+
+    def _preview_fill(self, order: Order, quote: LiveQuote, *, available_cash: float) -> Fill | None:
+        if order.order_id in self.seen_order_ids:
+            return None
+        if order.side == OrderSide.BUY and quote.ltp > order.price:
+            return None
+        if order.side == OrderSide.SELL and quote.ltp < order.price:
+            return None
+
+        quantity = min(order.quantity, max(int(quote.volume * 0.01), 1))
+        if quantity <= 0:
+            return None
+
+        fees = self.cost_model.estimate(side=order.side, price=quote.ltp, quantity=quantity)
+        notional = quote.ltp * quantity
+        if order.side == OrderSide.BUY and available_cash < notional + fees:
+            return None
+
+        return Fill(
+            order_id=order.order_id,
+            symbol=order.symbol,
+            side=order.side,
+            price=quote.ltp,
+            quantity=quantity,
+            timestamp=quote.timestamp,
+            fees=fees,
+            reason=order.reason,
+        )
 
     def _apply_fill(self, fill: Fill) -> None:
         position = self.positions.setdefault(fill.symbol, PaperPosition(symbol=fill.symbol))

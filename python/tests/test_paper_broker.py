@@ -56,3 +56,28 @@ def test_paper_broker_supports_simulated_short_then_cover() -> None:
     snapshot = broker.snapshot({"AAA": _quote(100)})
     assert snapshot["positions"][0]["quantity"] == 0
     assert snapshot["realized_pnl"] > 0
+
+
+def test_paper_broker_atomic_batch_rejects_all_when_one_leg_cannot_fill() -> None:
+    broker = PaperBroker(initial_cash=25_000)
+    sell = Order("pair-1", "AAA", OrderSide.SELL, OrderType.LIMIT, 100, 5, _quote(100).timestamp, "pair_short")
+    buy = Order("pair-2", "AAA", OrderSide.BUY, OrderType.LIMIT, 99, 5, _quote(100).timestamp, "pair_long")
+
+    fills = broker.submit_atomic([sell, buy], {"AAA": _quote(100)})
+
+    assert fills == []
+    assert broker.positions == {}
+    assert broker.cash == 25_000
+    assert broker.seen_order_ids == set()
+
+
+def test_paper_broker_atomic_batch_applies_all_legs() -> None:
+    broker = PaperBroker(initial_cash=25_000)
+    sell = Order("pair-1", "AAA", OrderSide.SELL, OrderType.LIMIT, 100, 5, _quote(100).timestamp, "pair_short")
+    buy = Order("pair-2", "AAA", OrderSide.BUY, OrderType.LIMIT, 100, 2, _quote(100).timestamp, "pair_long")
+
+    fills = broker.submit_atomic([sell, buy], {"AAA": _quote(100)})
+
+    assert [fill.order_id for fill in fills] == ["pair-1", "pair-2"]
+    assert broker.positions["AAA"].quantity == -3
+    assert broker.seen_order_ids == {"pair-1", "pair-2"}

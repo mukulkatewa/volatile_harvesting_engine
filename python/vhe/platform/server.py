@@ -173,10 +173,10 @@ async def _run_feed() -> None:
         pair_orders = _pair_orders_if_ready()
 
         single_name_orders = [] if _is_pair_symbol(quote.symbol) else grid_strategy.orders_from_plan(grid_plan, quote) + momentum_strategy.orders_from_plan(momentum_plan, quote)
-        orders = single_name_orders + pair_orders
-        fills = _submit_orders(orders)
-        state.orders.extend(orders)
-        state.fills.extend(fills)
+        single_name_fills = _submit_orders(single_name_orders)
+        pair_fills = _submit_pair_orders_atomic(pair_orders)
+        state.orders.extend(single_name_orders + pair_orders)
+        state.fills.extend(single_name_fills + pair_fills)
         state.portfolio = paper_broker.snapshot(state.quotes)
         await _broadcast_state()
 
@@ -198,17 +198,43 @@ def _pair_orders_if_ready() -> list[Order]:
     if quote_a is None or quote_b is None:
         return []
     position_a = paper_broker.positions.get(pair_strategy.config.symbol_a)
-    current_position = position_a.quantity if position_a else 0
+    position_b = paper_broker.positions.get(pair_strategy.config.symbol_b)
     plan = pair_strategy.build_plan(
         PairInputs(
             quote_a=quote_a,
             quote_b=quote_b,
             regime=MarketRegime.RANGE,
-            current_position=current_position,
+            quantity_a=position_a.quantity if position_a else 0,
+            quantity_b=position_b.quantity if position_b else 0,
         )
     )
     state.pair_plans[plan.pair_id] = plan
     return pair_strategy.orders_from_plan(plan, quote_a, quote_b)
+
+
+def _submit_pair_orders_atomic(orders: list[Order]) -> list:
+    if not orders:
+        return []
+
+    for order in orders:
+        if order.symbol not in state.quotes:
+            state.append_event(event("risk", f"Rejected pair batch: missing_quote_{order.symbol}", "warning"))
+            return []
+        decision = risk_guard.evaluate(order, state.portfolio)
+        if not decision.approved:
+            state.controls.last_risk_reject = decision.reason
+            state.append_event(event("risk", f"Rejected pair batch: {decision.reason}", "warning"))
+            return []
+
+    fills = paper_broker.submit_atomic(orders, state.quotes)
+    if not fills:
+        state.append_event(event("risk", "Rejected pair batch: atomic_no_fill", "warning"))
+        return []
+
+    state.portfolio = paper_broker.snapshot(state.quotes)
+    for fill in fills:
+        state.append_event(event("fill", f"{fill.side.value} {fill.symbol} x{fill.quantity} @ {fill.price:.2f}"))
+    return fills
 
 
 def _submit_orders(orders: list[Order]) -> list:
