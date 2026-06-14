@@ -15,6 +15,7 @@ from vhe.platform.events import event
 from vhe.platform.state import PlatformState
 from vhe.strategies.dynamic_grid import DynamicGridInputs, DynamicGridStrategy
 from vhe.strategies.momentum import MomentumInputs, MomentumStrategy
+from vhe.strategies.pair_spread import PairConfig, PairInputs, PairSpreadStrategy
 from vhe.strategies.regime import MarketRegime
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -23,6 +24,7 @@ app = FastAPI(title="Volatility Harvesting Engine")
 state = PlatformState()
 grid_strategy = DynamicGridStrategy()
 momentum_strategy = MomentumStrategy()
+pair_strategy = PairSpreadStrategy(PairConfig(symbol_a="RELIANCE", symbol_b="HDFCBANK", hedge_ratio=1.0, mean=-0.04, std=0.006))
 paper_broker = PaperBroker(initial_cash=25_000.0)
 risk_guard = RiskGuard(RiskConfig())
 feed_task: asyncio.Task | None = None
@@ -168,26 +170,53 @@ async def _run_feed() -> None:
         state.plans[quote.symbol] = grid_plan
         state.momentum_plans[quote.symbol] = momentum_plan
         state.portfolio = paper_broker.snapshot(state.quotes)
+        pair_orders = _pair_orders_if_ready()
 
-        orders = grid_strategy.orders_from_plan(grid_plan, quote) + momentum_strategy.orders_from_plan(momentum_plan, quote)
-        fills = _submit_orders(orders, quote)
+        orders = grid_strategy.orders_from_plan(grid_plan, quote) + momentum_strategy.orders_from_plan(momentum_plan, quote) + pair_orders
+        fills = _submit_orders(orders)
         state.orders.extend(orders)
         state.fills.extend(fills)
         state.portfolio = paper_broker.snapshot(state.quotes)
         await _broadcast_state()
 
 
-def _submit_orders(orders: list[Order], quote) -> list:
+def _pair_orders_if_ready() -> list[Order]:
+    quote_a = state.quotes.get(pair_strategy.config.symbol_a)
+    quote_b = state.quotes.get(pair_strategy.config.symbol_b)
+    if quote_a is None or quote_b is None:
+        return []
+    position_a = paper_broker.positions.get(pair_strategy.config.symbol_a)
+    current_position = position_a.quantity if position_a else 0
+    plan = pair_strategy.build_plan(
+        PairInputs(
+            quote_a=quote_a,
+            quote_b=quote_b,
+            regime=MarketRegime.RANGE,
+            current_position=current_position,
+        )
+    )
+    state.pair_plans[plan.pair_id] = plan
+    return pair_strategy.orders_from_plan(plan, quote_a, quote_b)
+
+
+def _submit_orders(orders: list[Order]) -> list:
     fills = []
     for order in orders:
+        quote = state.quotes.get(order.symbol)
+        if quote is None:
+            state.append_event(event("risk", f"Rejected {order.symbol}: missing_quote", "warning"))
+            continue
+
         decision = risk_guard.evaluate(order, state.portfolio)
         if not decision.approved:
             state.controls.last_risk_reject = decision.reason
             state.append_event(event("risk", f"Rejected {order.symbol}: {decision.reason}", "warning"))
             continue
+
         fill = paper_broker.submit(order, quote)
         if fill is not None:
             fills.append(fill)
+            state.portfolio = paper_broker.snapshot(state.quotes)
             state.append_event(event("fill", f"{fill.side.value} {fill.symbol} x{fill.quantity} @ {fill.price:.2f}"))
     return fills
 

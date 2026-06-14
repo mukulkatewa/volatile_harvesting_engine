@@ -8,6 +8,7 @@ from vhe.live.models import LiveQuote
 from vhe.platform.events import PlatformEvent
 from vhe.strategies.dynamic_grid import DynamicGridPlan
 from vhe.strategies.momentum import MomentumPlan
+from vhe.strategies.pair_spread import PairSpreadPlan
 
 
 @dataclass(slots=True)
@@ -22,6 +23,7 @@ class PlatformState:
     quotes: dict[str, LiveQuote] = field(default_factory=dict)
     plans: dict[str, DynamicGridPlan] = field(default_factory=dict)
     momentum_plans: dict[str, MomentumPlan] = field(default_factory=dict)
+    pair_plans: dict[str, PairSpreadPlan] = field(default_factory=dict)
     orders: list[Order] = field(default_factory=list)
     fills: list[Fill] = field(default_factory=list)
     events: list[PlatformEvent] = field(default_factory=list)
@@ -42,6 +44,7 @@ class PlatformState:
             "quotes": {symbol: _quote_to_dict(quote, now=now) for symbol, quote in self.quotes.items()},
             "plans": {symbol: asdict(plan) for symbol, plan in self.plans.items()},
             "momentum_plans": {symbol: asdict(plan) for symbol, plan in self.momentum_plans.items()},
+            "pair_plans": {pair_id: asdict(plan) for pair_id, plan in self.pair_plans.items()},
             "orders": [asdict(order) for order in self.orders[-25:]],
             "fills": [asdict(fill) for fill in self.fills[-25:]],
             "events": [entry.to_dict() for entry in self.events[-40:]],

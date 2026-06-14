@@ -107,19 +107,48 @@ class PaperBroker:
         position.fees_paid += fill.fees
 
         if fill.side == OrderSide.BUY:
-            total_cost = fill.price * fill.quantity
-            new_quantity = position.quantity + fill.quantity
-            position.avg_price = ((position.avg_price * position.quantity) + total_cost) / new_quantity
-            position.quantity = new_quantity
-            self.cash -= total_cost + fill.fees
+            self._apply_buy(position, fill)
         else:
-            sell_quantity = min(fill.quantity, position.quantity)
-            if sell_quantity <= 0:
-                return
-            position.realized_pnl += (fill.price - position.avg_price) * sell_quantity - fill.fees
-            position.quantity -= sell_quantity
-            self.cash += fill.price * sell_quantity - fill.fees
+            self._apply_sell(position, fill)
+
+        self.fills.append(fill)
+
+    def _apply_buy(self, position: PaperPosition, fill: Fill) -> None:
+        remaining_quantity = fill.quantity
+
+        if position.quantity < 0:
+            cover_quantity = min(remaining_quantity, abs(position.quantity))
+            position.realized_pnl += (position.avg_price - fill.price) * cover_quantity
+            position.quantity += cover_quantity
+            remaining_quantity -= cover_quantity
             if position.quantity == 0:
                 position.avg_price = 0.0
 
-        self.fills.append(fill)
+        if remaining_quantity > 0:
+            total_cost = fill.price * remaining_quantity
+            new_quantity = position.quantity + remaining_quantity
+            position.avg_price = ((position.avg_price * position.quantity) + total_cost) / new_quantity
+            position.quantity = new_quantity
+
+        self.cash -= fill.price * fill.quantity + fill.fees
+        position.realized_pnl -= fill.fees
+
+    def _apply_sell(self, position: PaperPosition, fill: Fill) -> None:
+        remaining_quantity = fill.quantity
+
+        if position.quantity > 0:
+            sell_quantity = min(remaining_quantity, position.quantity)
+            position.realized_pnl += (fill.price - position.avg_price) * sell_quantity
+            position.quantity -= sell_quantity
+            remaining_quantity -= sell_quantity
+            if position.quantity == 0:
+                position.avg_price = 0.0
+
+        if remaining_quantity > 0:
+            short_notional = fill.price * remaining_quantity
+            new_abs_quantity = abs(position.quantity) + remaining_quantity
+            position.avg_price = ((position.avg_price * abs(position.quantity)) + short_notional) / new_abs_quantity
+            position.quantity -= remaining_quantity
+
+        self.cash += fill.price * fill.quantity - fill.fees
+        position.realized_pnl -= fill.fees

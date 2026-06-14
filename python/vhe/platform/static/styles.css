@@ -263,3 +263,11 @@ tbody tr.flash { animation: row-flash 520ms ease; }
 .event.danger {
   border-color: rgba(194, 67, 67, 0.35);
 }
+
+.pairs {
+  margin-top: 14px;
+}
+
+.pairs .panel {
+  min-height: 180px;
+}

@@ -40,6 +40,7 @@ function render(payload) {
   renderTicker(payload.quotes);
   renderQuotes(payload.quotes);
   renderStrategies(payload.plans, payload.momentum_plans || {});
+  renderPairs(payload.pair_plans || {});
   renderFills(payload.fills || []);
   renderPositions((portfolio.positions || []));
   renderEvents(payload.events || []);
@@ -119,6 +120,28 @@ function renderStrategies(gridPlans, momentumPlans) {
         </article>
       `;
     })
+    .join("");
+}
+
+function renderPairs(pairPlans) {
+  const target = document.getElementById("pair-plans");
+  const plans = Object.values(pairPlans);
+  if (plans.length === 0) {
+    target.innerHTML = `<article class="plan"><span class="muted">Waiting for both legs</span></article>`;
+    return;
+  }
+  target.innerHTML = plans
+    .sort((a, b) => a.pair_id.localeCompare(b.pair_id))
+    .map((plan) => `
+      <article class="plan">
+        <div class="plan-head"><strong>${plan.pair_id}</strong><span class="${plan.enabled ? "buy" : "muted"}">${plan.action}</span></div>
+        <div class="plan-meta">
+          <div><span>Z-score</span><strong>${fmt.format(plan.zscore)}</strong></div>
+          <div><span>Spread</span><strong>${fmt.format(plan.spread)}</strong></div>
+          <div><span>Reason</span><strong>${plan.reason}</strong></div>
+        </div>
+      </article>
+    `)
     .join("");
 }
 

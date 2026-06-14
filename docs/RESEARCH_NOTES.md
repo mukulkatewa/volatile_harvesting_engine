@@ -155,3 +155,13 @@ Useful takeaway:
 
 - A usable trading console needs visible audit history for operator actions, risk rejections, and paper fills.
 - VHE implementation implication: dashboard state now includes a bounded activity log and a resettable paper account so manual testing can start from a clean state without restarting the server.
+
+## 2026-06-15: Pair Spread Strategy Foundation
+
+Useful takeaway:
+
+- Pair spread trading should trade relative deviation, not standalone stock direction. The first implementation uses a log spread: `log(price_a) - hedge_ratio * log(price_b)`.
+- The strategy generates paired paper orders only when the absolute z-score crosses the configured entry band, exits near the mean, and disables entries at an extreme hard-stop z-score.
+- VHE implementation implication: multi-leg order submission must look up each leg quote by symbol, not reuse the latest tick from one leg.
+- Paper execution now supports simulated short quantities so pair spread tests can model short-a-long-b and long-a-short-b flows before live broker routing exists.
+- Live deployment implication: Indian cash-equity shorts are intraday constrained, so this module must remain paper-only until position reconciliation, order-book reconciliation, exchange segment rules, and end-of-day square-off controls are implemented.

@@ -42,3 +42,17 @@ def test_paper_broker_deduplicates_order_ids() -> None:
 
     assert broker.submit(order, _quote(100)) is not None
     assert broker.submit(order, _quote(100)) is None
+
+
+def test_paper_broker_supports_simulated_short_then_cover() -> None:
+    broker = PaperBroker(initial_cash=25_000)
+    sell = Order("short-1", "AAA", OrderSide.SELL, OrderType.LIMIT, 105, 5, _quote(105).timestamp, "short")
+    buy = Order("cover-1", "AAA", OrderSide.BUY, OrderType.LIMIT, 100, 5, _quote(100).timestamp, "cover")
+
+    assert broker.submit(sell, _quote(105)) is not None
+    assert broker.positions["AAA"].quantity == -5
+    assert broker.submit(buy, _quote(100)) is not None
+
+    snapshot = broker.snapshot({"AAA": _quote(100)})
+    assert snapshot["positions"][0]["quantity"] == 0
+    assert snapshot["realized_pnl"] > 0
