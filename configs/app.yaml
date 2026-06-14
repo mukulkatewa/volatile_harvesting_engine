@@ -1,0 +1,32 @@
+environment: dev
+timezone: Asia/Kolkata
+
+paths:
+  raw_data_dir: data/raw
+  processed_data_dir: data/processed
+  research_data_dir: data/research
+  reports_dir: reports
+
+universe:
+  name: nifty100
+  symbols:
+    - RELIANCE
+    - HDFCBANK
+    - ICICIBANK
+    - TATAMOTORS
+    - BEL
+    - TRENT
+
+market:
+  exchange: NSE
+  timezone: Asia/Kolkata
+  session_start: "09:15"
+  session_end: "15:30"
+
+data:
+  source: nse_bhavcopy
+  adjusted_prices: true
+  timeframe: 1d
+  turnover_threshold_inr: 100000000
+  min_close_price_inr: 100
+

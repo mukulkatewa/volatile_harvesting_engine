@@ -1,0 +1,15 @@
+date: null
+universe: nifty100
+
+filters:
+  min_close_price_inr: 100
+  min_turnover_inr: 100000000
+  max_gap_pct: 5
+  max_spread_bps: 20
+
+weights:
+  volatility_score: 0.40
+  range_score: 0.30
+  volume_score: 0.20
+  gap_penalty: 0.10
+

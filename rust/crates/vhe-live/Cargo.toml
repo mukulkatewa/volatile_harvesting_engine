@@ -1,0 +1,15 @@
+[package]
+name = "vhe-live"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+chrono.workspace = true
+clap.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+vhe-core = { path = "../vhe-core" }
+vhe-risk = { path = "../vhe-risk" }
+

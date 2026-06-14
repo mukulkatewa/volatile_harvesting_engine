@@ -1,0 +1,13 @@
+strategy_id: grid_intraday_v1
+timeframe: 5m
+grid_spacing_atr_multiplier: 0.35
+max_levels: 5
+reserve_capital_pct: 0.25
+symbol_cap_pct: 0.10
+force_exit_time: "15:10"
+
+risk:
+  max_daily_loss_pct: 0.01
+  max_symbol_loss_pct: 0.005
+  max_gross_exposure_pct: 0.75
+

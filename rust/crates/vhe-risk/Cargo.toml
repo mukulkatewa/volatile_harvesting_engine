@@ -1,0 +1,10 @@
+[package]
+name = "vhe-risk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+vhe-core = { path = "../vhe-core" }
+

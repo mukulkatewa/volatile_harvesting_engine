@@ -1,0 +1,15 @@
+mode: paper
+capital_cap_inr: 25000
+max_symbols: 2
+max_grid_levels: 5
+force_exit_time: "15:10"
+
+broker:
+  provider: zerodha
+  websocket_enabled: true
+
+risk:
+  reserve_capital_pct: 0.25
+  max_daily_loss_pct: 0.01
+  kill_switch_on_stale_quotes: true
+

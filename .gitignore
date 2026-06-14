@@ -1,0 +1,16 @@
+.pytest_cache/
+__pycache__/
+*.pyc
+.venv/
+venv/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+data/raw/
+data/processed/
+data/research/
+reports/
+rust/target/
+
