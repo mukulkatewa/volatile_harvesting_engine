@@ -39,3 +39,14 @@ def test_pair_spread_strategy_waits_inside_band() -> None:
 
     assert plan.enabled is False
     assert plan.action == "WAIT"
+
+
+def test_pair_spread_strategy_does_not_reenter_when_position_open() -> None:
+    strategy = PairSpreadStrategy(PairConfig("AAA", "BBB", hedge_ratio=1.0, mean=0.0, std=0.01, entry_z=1.5))
+    inputs = PairInputs(_quote("AAA", 102), _quote("BBB", 100), MarketRegime.RANGE, current_position=-4)
+
+    plan = strategy.build_plan(inputs)
+
+    assert plan.enabled is False
+    assert plan.action == "WAIT"
+    assert plan.reason == "position_open"

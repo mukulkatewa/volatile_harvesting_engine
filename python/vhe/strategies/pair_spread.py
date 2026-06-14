@@ -58,11 +58,13 @@ class PairSpreadStrategy:
 
         if abs_z >= self.config.max_abs_z:
             return PairSpreadPlan(pair_id, self.config.symbol_a, self.config.symbol_b, spread, zscore, "STOP", False, "zscore_hard_stop")
+        if inputs.current_position != 0:
+            if abs_z <= self.config.exit_z:
+                return PairSpreadPlan(pair_id, self.config.symbol_a, self.config.symbol_b, spread, zscore, "EXIT", True, "mean_reversion_exit")
+            return PairSpreadPlan(pair_id, self.config.symbol_a, self.config.symbol_b, spread, zscore, "WAIT", False, "position_open")
         if abs_z >= self.config.entry_z:
             action = "SHORT_A_LONG_B" if zscore > 0 else "LONG_A_SHORT_B"
             return PairSpreadPlan(pair_id, self.config.symbol_a, self.config.symbol_b, spread, zscore, action, True, "spread_deviation")
-        if abs_z <= self.config.exit_z and inputs.current_position != 0:
-            return PairSpreadPlan(pair_id, self.config.symbol_a, self.config.symbol_b, spread, zscore, "EXIT", True, "mean_reversion_exit")
         return PairSpreadPlan(pair_id, self.config.symbol_a, self.config.symbol_b, spread, zscore, "WAIT", False, "inside_band")
 
     def orders_from_plan(self, plan: PairSpreadPlan, quote_a: LiveQuote, quote_b: LiveQuote) -> list[Order]:
