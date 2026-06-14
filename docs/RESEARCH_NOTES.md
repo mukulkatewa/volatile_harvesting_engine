@@ -95,3 +95,32 @@ Useful takeaway:
 - The first screen should show feed health, mode, quote latency, spread, current grid spacing, reset reason, and generated strategy intents.
 - Motion should clarify live updates: connection pulse, row flash on quote changes, and staged panel entry are useful; decorative motion is not.
 
+
+## 2026-06-15: Kite WebSocket Packet Parser
+
+### Live Feed Parser
+
+Reference:
+
+- Kite Connect WebSocket documentation.
+- URL: https://kite.trade/docs/connect/v3/websocket/
+
+Useful takeaway:
+
+- WebSocket quote packets are binary and start with a packet count followed by packet lengths and packet payloads.
+- `ltp` packets are compact and only provide token plus last traded price.
+- `quote` packets add OHLC, volume, average price, and buy/sell quantity.
+- `full` packets add timestamps and 5 levels of bid/ask market depth.
+- VHE implementation implication: the parser must be isolated, unit-tested with constructed binary payloads, and converted into internal `LiveQuote` objects before strategy code sees the data.
+
+### Instrument Cache
+
+Reference:
+
+- Kite Connect Market quotes and instruments documentation.
+- URL: https://kite.trade/docs/connect/v3/market-quotes/
+
+Useful takeaway:
+
+- The instrument dump is a large gzipped CSV regenerated daily.
+- VHE implementation implication: cache instruments by trading date, validate required columns, and derive the NSE equity token map before subscribing to live feed.

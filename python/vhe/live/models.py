@@ -23,12 +23,16 @@ class LiveQuote:
     volume: int
     bid: MarketDepthLevel | None = None
     ask: MarketDepthLevel | None = None
+    bids: tuple[MarketDepthLevel, ...] = ()
+    asks: tuple[MarketDepthLevel, ...] = ()
 
     @property
     def spread_bps(self) -> float | None:
-        if self.bid is None or self.ask is None or self.ltp <= 0:
+        best_bid = self.bid or (self.bids[0] if self.bids else None)
+        best_ask = self.ask or (self.asks[0] if self.asks else None)
+        if best_bid is None or best_ask is None or self.ltp <= 0:
             return None
-        return ((self.ask.price - self.bid.price) / self.ltp) * 10_000
+        return ((best_ask.price - best_bid.price) / self.ltp) * 10_000
 
 
 @dataclass(frozen=True, slots=True)

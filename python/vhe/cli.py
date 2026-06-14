@@ -7,6 +7,8 @@ from pathlib import Path
 from vhe.config.models import AppConfig
 from vhe.data.panel import load_history_from_parquet_dir
 from vhe.data.service import ingest_nse_bhavcopy
+from vhe.live.kite import nse_equity_token_map
+from vhe.live.kite_instruments import cache_instruments_csv, load_cached_instruments
 from vhe.scanner.daily import build_candidate_report
 
 
@@ -39,6 +41,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory containing bhavcopy parquet files. Defaults to data/raw/nse_bhavcopy.",
     )
     scan_parser.add_argument("--top-n", type=int, default=10, help="Number of candidates to print.")
+
+    kite_cache_parser = subparsers.add_parser("kite-cache-instruments", help="Cache a Kite instruments CSV file locally.")
+    kite_cache_parser.add_argument("--csv", type=Path, required=True, help="Path to the Kite instruments CSV file.")
+    kite_cache_parser.add_argument("--date", required=True, help="Trading date in YYYY-MM-DD format.")
+    kite_cache_parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=Path("data/raw/kite"),
+        help="Directory where instrument cache files are stored.",
+    )
+
+    kite_tokens_parser = subparsers.add_parser("kite-token-map", help="Print NSE equity instrument tokens for configured symbols.")
+    kite_tokens_parser.add_argument("--date", required=True, help="Trading date in YYYY-MM-DD format.")
+    kite_tokens_parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=Path("data/raw/kite"),
+        help="Directory where instrument cache files are stored.",
+    )
 
     return parser
 
@@ -79,6 +100,22 @@ def main() -> None:
             "candidate_score",
         ]
         print(report[display_columns].to_string(index=False))
+        return
+
+    if args.command == "kite-cache-instruments":
+        payload = args.csv.read_text()
+        result = cache_instruments_csv(payload, cache_dir=args.cache_dir, trading_date=date.fromisoformat(args.date))
+        print(f"saved={result.path} instruments={len(result.instruments)}")
+        return
+
+    if args.command == "kite-token-map":
+        result = load_cached_instruments(cache_dir=args.cache_dir, trading_date=date.fromisoformat(args.date))
+        token_map = nse_equity_token_map(result.instruments, config.universe.symbols)
+        for symbol in sorted(token_map):
+            print(f"{symbol}={token_map[symbol]}")
+        missing = sorted(set(config.universe.symbols) - set(token_map))
+        if missing:
+            print(f"missing={','.join(missing)}")
         return
 
     parser.error(f"Unsupported command: {args.command}")
