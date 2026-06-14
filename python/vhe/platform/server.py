@@ -144,7 +144,7 @@ async def _run_feed() -> None:
         fair_value = quote.close
         atr = max(quote.high - quote.low, quote.ltp * 0.006)
         regime = _simulated_regime(quote)
-        current_quantity = paper_broker.positions.get(quote.symbol).quantity if quote.symbol in paper_broker.positions else 0
+        current_quantity = _single_name_quantity(quote.symbol)
 
         grid_plan = grid_strategy.build_plan(
             DynamicGridInputs(
@@ -172,12 +172,24 @@ async def _run_feed() -> None:
         state.portfolio = paper_broker.snapshot(state.quotes)
         pair_orders = _pair_orders_if_ready()
 
-        orders = grid_strategy.orders_from_plan(grid_plan, quote) + momentum_strategy.orders_from_plan(momentum_plan, quote) + pair_orders
+        single_name_orders = [] if _is_pair_symbol(quote.symbol) else grid_strategy.orders_from_plan(grid_plan, quote) + momentum_strategy.orders_from_plan(momentum_plan, quote)
+        orders = single_name_orders + pair_orders
         fills = _submit_orders(orders)
         state.orders.extend(orders)
         state.fills.extend(fills)
         state.portfolio = paper_broker.snapshot(state.quotes)
         await _broadcast_state()
+
+
+def _is_pair_symbol(symbol: str) -> bool:
+    return symbol in {pair_strategy.config.symbol_a, pair_strategy.config.symbol_b}
+
+
+def _single_name_quantity(symbol: str) -> int:
+    if _is_pair_symbol(symbol):
+        return 0
+    position = paper_broker.positions.get(symbol)
+    return position.quantity if position else 0
 
 
 def _pair_orders_if_ready() -> list[Order]:

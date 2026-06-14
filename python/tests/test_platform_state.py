@@ -28,3 +28,17 @@ def test_platform_state_snapshot_serializes_quotes() -> None:
     assert snapshot["portfolio"]["equity"] == 25000
     assert snapshot["fills"] == []
     assert snapshot["controls"]["kill_switch"] is False
+
+
+def test_platform_server_reserves_pair_symbols_from_single_name_quantity() -> None:
+    from vhe.execution.paper import PaperPosition
+    from vhe.platform import server
+
+    server.paper_broker.positions["RELIANCE"] = PaperPosition(symbol="RELIANCE", quantity=-4, avg_price=1000)
+    server.paper_broker.positions["BEL"] = PaperPosition(symbol="BEL", quantity=3, avg_price=100)
+
+    assert server._is_pair_symbol("RELIANCE") is True
+    assert server._single_name_quantity("RELIANCE") == 0
+    assert server._single_name_quantity("BEL") == 3
+
+    server.paper_broker.positions.clear()
