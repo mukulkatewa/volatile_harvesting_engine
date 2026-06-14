@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "volatile-harvesting-engine"
 version = "0.1.0"
 description = "Volatility Harvesting Engine research and execution stack"
-readme = "docs/VHE_RESEARCH_AND_BUILD_PLAN.md"
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "duckdb>=1.1.3,<2",

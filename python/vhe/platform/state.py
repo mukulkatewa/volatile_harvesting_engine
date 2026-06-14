@@ -24,6 +24,7 @@ class PlatformState:
     plans: dict[str, DynamicGridPlan] = field(default_factory=dict)
     momentum_plans: dict[str, MomentumPlan] = field(default_factory=dict)
     pair_plans: dict[str, PairSpreadPlan] = field(default_factory=dict)
+    pair_trades: list[dict] = field(default_factory=list)
     orders: list[Order] = field(default_factory=list)
     fills: list[Fill] = field(default_factory=list)
     events: list[PlatformEvent] = field(default_factory=list)
@@ -45,6 +46,7 @@ class PlatformState:
             "plans": {symbol: asdict(plan) for symbol, plan in self.plans.items()},
             "momentum_plans": {symbol: asdict(plan) for symbol, plan in self.momentum_plans.items()},
             "pair_plans": {pair_id: asdict(plan) for pair_id, plan in self.pair_plans.items()},
+            "pair_trades": self.pair_trades[-20:],
             "orders": [asdict(order) for order in self.orders[-25:]],
             "fills": [asdict(fill) for fill in self.fills[-25:]],
             "events": [entry.to_dict() for entry in self.events[-40:]],

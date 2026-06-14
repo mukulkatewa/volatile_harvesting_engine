@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from vhe.backtest.models import Order, OrderSide, OrderType
+from vhe.execution.pair_ledger import PairLedger
 from vhe.execution.paper import PaperBroker
 from vhe.execution.risk import RiskConfig, RiskGuard
 from vhe.live.feed import SimulatedQuoteFeed
@@ -26,6 +27,7 @@ grid_strategy = DynamicGridStrategy()
 momentum_strategy = MomentumStrategy()
 pair_strategy = PairSpreadStrategy(PairConfig(symbol_a="RELIANCE", symbol_b="HDFCBANK", hedge_ratio=1.0, mean=-0.04, std=0.006))
 paper_broker = PaperBroker(initial_cash=25_000.0)
+pair_ledger = PairLedger()
 risk_guard = RiskGuard(RiskConfig())
 feed_task: asyncio.Task | None = None
 subscribers: set[WebSocket] = set()
@@ -83,10 +85,12 @@ async def activate_kill_switch() -> dict:
 
 @app.post("/api/control/reset-paper")
 async def reset_paper() -> dict:
-    global paper_broker
+    global paper_broker, pair_ledger
     paper_broker = PaperBroker(initial_cash=25_000.0)
+    pair_ledger = PairLedger()
     state.orders.clear()
     state.fills.clear()
+    state.pair_trades.clear()
     state.portfolio = paper_broker.snapshot(state.quotes)
     state.controls.last_risk_reject = None
     state.append_event(event("control", "Paper account reset"))
@@ -234,6 +238,10 @@ def _submit_pair_orders_atomic(orders: list[Order]) -> list:
     state.portfolio = paper_broker.snapshot(state.quotes)
     for fill in fills:
         state.append_event(event("fill", f"{fill.side.value} {fill.symbol} x{fill.quantity} @ {fill.price:.2f}"))
+    trade = pair_ledger.apply_pair_fills(pair_strategy.config.symbol_a + "/" + pair_strategy.config.symbol_b, fills)
+    if trade is not None:
+        state.pair_trades = pair_ledger.snapshot()
+        state.append_event(event("pair", f"{trade.status} {trade.pair_id} {trade.trade_id}"))
     return fills
 
 

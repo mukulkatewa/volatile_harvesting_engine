@@ -271,3 +271,11 @@ tbody tr.flash { animation: row-flash 520ms ease; }
 .pairs .panel {
   min-height: 180px;
 }
+
+.pair-ledger {
+  margin-top: 14px;
+}
+
+.pair-ledger .panel {
+  min-height: 220px;
+}

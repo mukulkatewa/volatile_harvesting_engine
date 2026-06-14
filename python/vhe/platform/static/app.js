@@ -41,6 +41,7 @@ function render(payload) {
   renderQuotes(payload.quotes);
   renderStrategies(payload.plans, payload.momentum_plans || {});
   renderPairs(payload.pair_plans || {});
+  renderPairTrades(payload.pair_trades || []);
   renderFills(payload.fills || []);
   renderPositions((portfolio.positions || []));
   renderEvents(payload.events || []);
@@ -140,6 +141,26 @@ function renderPairs(pairPlans) {
           <div><span>Spread</span><strong>${fmt.format(plan.spread)}</strong></div>
           <div><span>Qty A/B</span><strong>${plan.quantity_a || 0}/${plan.quantity_b || 0}</strong></div>
         </div>
+      </article>
+    `)
+    .join("");
+}
+
+function renderPairTrades(trades) {
+  const target = document.getElementById("pair-trades");
+  if (trades.length === 0) {
+    target.classList.add("empty-state");
+    target.innerHTML = "<span>No pair trades yet</span>";
+    return;
+  }
+  target.classList.remove("empty-state");
+  target.innerHTML = trades
+    .slice()
+    .reverse()
+    .map((trade) => `
+      <article class="order">
+        <div><strong class="${trade.status === "CLOSED" ? "buy" : "stale"}">${trade.status}</strong><span> ${trade.pair_id}</span><p class="muted">${trade.trade_id}</p></div>
+        <div><strong class="${trade.realized_pnl >= 0 ? "buy" : "sell"}">${money.format(trade.realized_pnl || 0)}</strong><p class="muted">Fees ${money.format(trade.fees_paid || 0)}</p></div>
       </article>
     `)
     .join("");
