@@ -8,43 +8,46 @@
   </head>
   <body>
     <main class="shell">
-      <section class="topbar">
+      <section class="topbar reveal">
         <div>
           <p class="eyebrow">Volatility Harvesting Engine</p>
-          <h1>Live Strategy Console</h1>
+          <h1>Strategy Control</h1>
         </div>
-        <div class="status">
-          <span id="connection-dot" class="dot"></span>
-          <span id="connection-label">Connecting</span>
+        <div class="actions">
+          <button class="icon-button" title="Pause automation" aria-label="Pause automation">II</button>
+          <button class="icon-button danger" title="Kill switch" aria-label="Kill switch">!</button>
+          <div class="status"><span id="connection-dot" class="dot"></span><span id="connection-label">Connecting</span></div>
         </div>
       </section>
 
-      <section class="metrics">
+      <section class="metrics reveal delay-1">
         <article><span>Feed</span><strong id="feed-source">-</strong></article>
         <article><span>Symbols</span><strong id="symbol-count">0</strong></article>
-        <article><span>Pending Intents</span><strong id="order-count">0</strong></article>
-        <article><span>Mode</span><strong>Paper</strong></article>
+        <article><span>Strategy Intents</span><strong id="order-count">0</strong></article>
+        <article><span>Mode</span><strong id="mode-label">Paper</strong></article>
       </section>
 
-      <section class="workspace">
+      <section class="ticker reveal delay-2" id="ticker"></section>
+
+      <section class="workspace reveal delay-3">
         <div class="panel quotes-panel">
-          <div class="panel-head"><h2>Quotes</h2><span>Simulated feed</span></div>
+          <div class="panel-head"><h2>Market Feed</h2><span>Top of book</span></div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Symbol</th><th>LTP</th><th>Spread</th><th>Volume</th></tr></thead>
+              <thead><tr><th>Symbol</th><th>LTP</th><th>Spread</th><th>Age</th><th>Volume</th></tr></thead>
               <tbody id="quotes-body"></tbody>
             </table>
           </div>
         </div>
 
         <div class="panel grid-panel">
-          <div class="panel-head"><h2>Dynamic Grid</h2><span>ATR spaced</span></div>
+          <div class="panel-head"><h2>Dynamic Grid</h2><span>ATR reset map</span></div>
           <div id="grid-plans" class="grid-plans"></div>
         </div>
 
         <div class="panel orders-panel">
-          <div class="panel-head"><h2>Strategy Intents</h2><span>Last 25</span></div>
-          <div id="orders" class="orders"></div>
+          <div class="panel-head"><h2>Intent Tape</h2><span>Paper only</span></div>
+          <div id="orders" class="orders empty-state"><span>No active intents</span></div>
         </div>
       </section>
     </main>

@@ -1,4 +1,5 @@
 const fmt = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
+const seenPrices = new Map();
 
 function connect() {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
@@ -17,6 +18,8 @@ function render(payload) {
   document.getElementById("feed-source").textContent = payload.source;
   document.getElementById("symbol-count").textContent = Object.keys(payload.quotes).length;
   document.getElementById("order-count").textContent = payload.orders.length;
+  document.getElementById("mode-label").textContent = titleCase(payload.mode || "paper");
+  renderTicker(payload.quotes);
   renderQuotes(payload.quotes);
   renderPlans(payload.plans);
   renderOrders(payload.orders);
@@ -27,17 +30,31 @@ function renderConnection(connected) {
   document.getElementById("connection-label").textContent = connected ? "Live" : "Disconnected";
 }
 
+function renderTicker(quotes) {
+  document.getElementById("ticker").innerHTML = Object.values(quotes)
+    .sort((a, b) => a.symbol.localeCompare(b.symbol))
+    .map((quote) => `<div class="ticker-chip"><strong>${quote.symbol}</strong><span>${fmt.format(quote.ltp)}</span></div>`)
+    .join("");
+}
+
 function renderQuotes(quotes) {
   document.getElementById("quotes-body").innerHTML = Object.values(quotes)
     .sort((a, b) => a.symbol.localeCompare(b.symbol))
-    .map((quote) => `
-      <tr>
-        <td>${quote.symbol}</td>
-        <td>${fmt.format(quote.ltp)}</td>
-        <td>${quote.spread_bps === null ? "-" : fmt.format(quote.spread_bps)}</td>
-        <td>${fmt.format(quote.volume)}</td>
-      </tr>
-    `)
+    .map((quote) => {
+      const previous = seenPrices.get(quote.symbol);
+      const changed = previous !== undefined && previous !== quote.ltp;
+      seenPrices.set(quote.symbol, quote.ltp);
+      const ageClass = quote.age_ms > 2000 ? "stale" : "";
+      return `
+        <tr class="${changed ? "flash" : ""}">
+          <td><strong>${quote.symbol}</strong></td>
+          <td>${fmt.format(quote.ltp)}</td>
+          <td>${quote.spread_bps === null ? "-" : fmt.format(quote.spread_bps)}</td>
+          <td class="${ageClass}">${quote.age_ms}ms</td>
+          <td>${fmt.format(quote.volume)}</td>
+        </tr>
+      `;
+    })
     .join("");
 }
 
@@ -47,7 +64,11 @@ function renderPlans(plans) {
     .map((plan) => `
       <article class="plan">
         <div class="plan-head"><strong>${plan.symbol}</strong><span class="muted">${plan.regime}</span></div>
-        <p class="muted">FV ${fmt.format(plan.fair_value)} | Spacing ${fmt.format(plan.spacing)}</p>
+        <div class="plan-meta">
+          <div><span>Fair value</span><strong>${fmt.format(plan.fair_value)}</strong></div>
+          <div><span>Spacing</span><strong>${fmt.format(plan.spacing)}</strong></div>
+          <div><span>Reset</span><strong>${plan.reset_reason || "stable"}</strong></div>
+        </div>
         <div class="levels">${plan.buy_levels.map((level) => `<span class="level">${fmt.format(level)}</span>`).join("")}</div>
       </article>
     `)
@@ -55,7 +76,14 @@ function renderPlans(plans) {
 }
 
 function renderOrders(orders) {
-  document.getElementById("orders").innerHTML = orders
+  const target = document.getElementById("orders");
+  if (orders.length === 0) {
+    target.classList.add("empty-state");
+    target.innerHTML = "<span>No active intents</span>";
+    return;
+  }
+  target.classList.remove("empty-state");
+  target.innerHTML = orders
     .slice()
     .reverse()
     .map((order) => `
@@ -65,6 +93,10 @@ function renderOrders(orders) {
       </article>
     `)
     .join("");
+}
+
+function titleCase(value) {
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
 }
 
 connect();

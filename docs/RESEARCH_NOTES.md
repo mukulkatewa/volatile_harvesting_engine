@@ -71,3 +71,27 @@ Useful takeaway:
 - Keep simulated feed and Kite feed behind the same protocol.
 - Use the simulated feed in the UI by default so the platform can be developed without market hours or broker credentials.
 - Do not place live orders until order reconciliation, kill switch, and paper/live parity are implemented.
+
+## 2026-06-15: Instrument Master And Trading Console UI
+
+### Kite Instrument Master
+
+Reference:
+
+- Kite Connect Market quotes and instruments documentation.
+- URL: https://kite.trade/docs/connect/v3/market-quotes/
+
+Useful takeaway:
+
+- Live WebSocket subscriptions use numeric `instrument_token` values, not tradingsymbol strings.
+- VHE implementation implication: every live session must start from a validated instrument master map before subscribing to quotes.
+- The parser should filter by `exchange == NSE`, `segment == NSE`, and `instrument_type == EQ` for the v1 cash-equity scope.
+
+### Platform UI Direction
+
+Useful takeaway:
+
+- The dashboard should behave like a control surface, not a landing page.
+- The first screen should show feed health, mode, quote latency, spread, current grid spacing, reset reason, and generated strategy intents.
+- Motion should clarify live updates: connection pulse, row flash on quote changes, and staged panel entry are useful; decorative motion is not.
+

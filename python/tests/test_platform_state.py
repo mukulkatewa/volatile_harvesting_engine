@@ -21,4 +21,7 @@ def test_platform_state_snapshot_serializes_quotes() -> None:
     snapshot = state.snapshot()
 
     assert snapshot["connected"] is True
+    assert snapshot["mode"] == "paper"
+    assert "server_time" in snapshot
     assert snapshot["quotes"]["AAA"]["ltp"] == 100
+    assert snapshot["quotes"]["AAA"]["age_ms"] >= 0
