@@ -124,3 +124,19 @@ Useful takeaway:
 
 - The instrument dump is a large gzipped CSV regenerated daily.
 - VHE implementation implication: cache instruments by trading date, validate required columns, and derive the NSE equity token map before subscribing to live feed.
+
+## 2026-06-15: Momentum Fallback And Paper Execution
+
+### Momentum Fallback
+
+Useful takeaway:
+
+- Momentum should be a regime-specific fallback, not a continuously active strategy.
+- VHE implementation implication: momentum is armed only during `TREND_UP` with bullish EMA stack, and it emits paper intents before any live execution path exists.
+
+### Paper Execution
+
+Useful takeaway:
+
+- Before any broker order placement, strategy intents must flow through a paper broker that owns cash, positions, fills, fees, and mark-to-market state.
+- VHE implementation implication: the dashboard should show positions/PnL from the paper broker, not from strategy-side assumptions.

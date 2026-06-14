@@ -1,4 +1,5 @@
 const fmt = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
+const money = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 const seenPrices = new Map();
 
 function connect() {
@@ -14,20 +15,29 @@ function connect() {
 }
 
 function render(payload) {
+  const portfolio = payload.portfolio || {};
   renderConnection(payload.connected);
-  document.getElementById("feed-source").textContent = payload.source;
-  document.getElementById("symbol-count").textContent = Object.keys(payload.quotes).length;
-  document.getElementById("order-count").textContent = payload.orders.length;
+  document.getElementById("equity").textContent = money.format(portfolio.equity || 0);
+  document.getElementById("cash").textContent = money.format(portfolio.cash || 0);
+  setPnl("unrealized-pnl", portfolio.unrealized_pnl || 0);
   document.getElementById("mode-label").textContent = titleCase(payload.mode || "paper");
   renderTicker(payload.quotes);
   renderQuotes(payload.quotes);
-  renderPlans(payload.plans);
-  renderOrders(payload.orders);
+  renderStrategies(payload.plans, payload.momentum_plans || {});
+  renderFills(payload.fills || []);
+  renderPositions((portfolio.positions || []));
 }
 
 function renderConnection(connected) {
   document.getElementById("connection-dot").classList.toggle("live", connected);
   document.getElementById("connection-label").textContent = connected ? "Live" : "Disconnected";
+}
+
+function setPnl(id, value) {
+  const target = document.getElementById(id);
+  target.textContent = money.format(value);
+  target.classList.toggle("buy", value >= 0);
+  target.classList.toggle("sell", value < 0);
 }
 
 function renderTicker(quotes) {
@@ -58,39 +68,62 @@ function renderQuotes(quotes) {
     .join("");
 }
 
-function renderPlans(plans) {
-  document.getElementById("grid-plans").innerHTML = Object.values(plans)
-    .sort((a, b) => a.symbol.localeCompare(b.symbol))
-    .map((plan) => `
-      <article class="plan">
-        <div class="plan-head"><strong>${plan.symbol}</strong><span class="muted">${plan.regime}</span></div>
-        <div class="plan-meta">
-          <div><span>Fair value</span><strong>${fmt.format(plan.fair_value)}</strong></div>
-          <div><span>Spacing</span><strong>${fmt.format(plan.spacing)}</strong></div>
-          <div><span>Reset</span><strong>${plan.reset_reason || "stable"}</strong></div>
-        </div>
-        <div class="levels">${plan.buy_levels.map((level) => `<span class="level">${fmt.format(level)}</span>`).join("")}</div>
+function renderStrategies(gridPlans, momentumPlans) {
+  const symbols = [...new Set([...Object.keys(gridPlans), ...Object.keys(momentumPlans)])].sort();
+  document.getElementById("strategy-plans").innerHTML = symbols
+    .map((symbol) => {
+      const grid = gridPlans[symbol];
+      const momentum = momentumPlans[symbol];
+      return `
+        <article class="plan">
+          <div class="plan-head"><strong>${symbol}</strong><span class="muted">${grid?.regime || "-"}</span></div>
+          <div class="plan-meta">
+            <div><span>Fair value</span><strong>${grid ? fmt.format(grid.fair_value) : "-"}</strong></div>
+            <div><span>Grid spacing</span><strong>${grid ? fmt.format(grid.spacing) : "-"}</strong></div>
+            <div><span>Momentum</span><strong class="${momentum?.enabled ? "buy" : "muted"}">${momentum?.enabled ? "Armed" : momentum?.reason || "-"}</strong></div>
+          </div>
+          <div class="levels">${(grid?.buy_levels || []).map((level) => `<span class="level">${fmt.format(level)}</span>`).join("")}</div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderFills(fills) {
+  const target = document.getElementById("fills");
+  if (fills.length === 0) {
+    target.classList.add("empty-state");
+    target.innerHTML = "<span>No fills yet</span>";
+    return;
+  }
+  target.classList.remove("empty-state");
+  target.innerHTML = fills
+    .slice()
+    .reverse()
+    .map((fill) => `
+      <article class="order">
+        <div><strong class="${fill.side === "BUY" ? "buy" : "sell"}">${fill.side}</strong><span> ${fill.symbol}</span><p class="muted">${fill.reason}</p></div>
+        <div><strong>${fmt.format(fill.price)}</strong><p class="muted">Qty ${fill.quantity}</p></div>
       </article>
     `)
     .join("");
 }
 
-function renderOrders(orders) {
-  const target = document.getElementById("orders");
-  if (orders.length === 0) {
-    target.classList.add("empty-state");
-    target.innerHTML = "<span>No active intents</span>";
+function renderPositions(positions) {
+  const body = document.getElementById("positions-body");
+  if (positions.length === 0) {
+    body.innerHTML = `<tr><td colspan="5" class="muted">No open positions</td></tr>`;
     return;
   }
-  target.classList.remove("empty-state");
-  target.innerHTML = orders
-    .slice()
-    .reverse()
-    .map((order) => `
-      <article class="order">
-        <div><strong class="${order.side === "BUY" ? "buy" : "sell"}">${order.side}</strong><span> ${order.symbol}</span><p class="muted">${order.reason}</p></div>
-        <div><strong>${fmt.format(order.price)}</strong><p class="muted">Qty ${order.quantity}</p></div>
-      </article>
+  body.innerHTML = positions
+    .map((position) => `
+      <tr>
+        <td><strong>${position.symbol}</strong></td>
+        <td>${position.quantity}</td>
+        <td>${fmt.format(position.avg_price)}</td>
+        <td>${fmt.format(position.last_price)}</td>
+        <td class="${position.unrealized_pnl >= 0 ? "buy" : "sell"}">${money.format(position.unrealized_pnl)}</td>
+      </tr>
     `)
     .join("");
 }

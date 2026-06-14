@@ -7,16 +7,20 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from vhe.execution.paper import PaperBroker
 from vhe.live.feed import SimulatedQuoteFeed
 from vhe.platform.state import PlatformState
 from vhe.strategies.dynamic_grid import DynamicGridInputs, DynamicGridStrategy
+from vhe.strategies.momentum import MomentumInputs, MomentumStrategy
 from vhe.strategies.regime import MarketRegime
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(title="Volatility Harvesting Engine")
 state = PlatformState()
-strategy = DynamicGridStrategy()
+grid_strategy = DynamicGridStrategy()
+momentum_strategy = MomentumStrategy()
+paper_broker = PaperBroker(initial_cash=25_000.0)
 feed_task: asyncio.Task | None = None
 subscribers: set[WebSocket] = set()
 
@@ -63,20 +67,49 @@ async def _run_feed() -> None:
     async for quote in feed.stream():
         fair_value = quote.close
         atr = max(quote.high - quote.low, quote.ltp * 0.006)
-        plan = strategy.build_plan(
+        regime = _simulated_regime(quote)
+        current_quantity = paper_broker.positions.get(quote.symbol).quantity if quote.symbol in paper_broker.positions else 0
+
+        grid_plan = grid_strategy.build_plan(
             DynamicGridInputs(
                 quote=quote,
                 fair_value=fair_value,
                 atr_14=atr,
-                regime=MarketRegime.RANGE,
-                current_quantity=0,
+                regime=regime,
+                current_quantity=current_quantity,
             )
         )
-        orders = strategy.orders_from_plan(plan, quote)
+        momentum_plan = momentum_strategy.build_plan(
+            MomentumInputs(
+                quote=quote,
+                regime=regime,
+                ema_20=quote.close - (atr * 0.04),
+                ema_50=quote.close - (atr * 0.14),
+                atr_14=atr,
+                current_quantity=current_quantity,
+            )
+        )
+
+        orders = grid_strategy.orders_from_plan(grid_plan, quote) + momentum_strategy.orders_from_plan(momentum_plan, quote)
+        fills = []
+        for order in orders:
+            fill = paper_broker.submit(order, quote)
+            if fill is not None:
+                fills.append(fill)
+
         state.quotes[quote.symbol] = quote
-        state.plans[quote.symbol] = plan
+        state.plans[quote.symbol] = grid_plan
+        state.momentum_plans[quote.symbol] = momentum_plan
         state.orders.extend(orders)
+        state.fills.extend(fills)
+        state.portfolio = paper_broker.snapshot(state.quotes)
         await _broadcast_state()
+
+
+def _simulated_regime(quote) -> MarketRegime:
+    if quote.symbol == "HDFCBANK" and quote.ltp > quote.close:
+        return MarketRegime.TREND_UP
+    return MarketRegime.RANGE
 
 
 async def _broadcast_state() -> None:

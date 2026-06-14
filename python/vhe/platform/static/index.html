@@ -21,9 +21,9 @@
       </section>
 
       <section class="metrics reveal delay-1">
-        <article><span>Feed</span><strong id="feed-source">-</strong></article>
-        <article><span>Symbols</span><strong id="symbol-count">0</strong></article>
-        <article><span>Strategy Intents</span><strong id="order-count">0</strong></article>
+        <article><span>Equity</span><strong id="equity">-</strong></article>
+        <article><span>Cash</span><strong id="cash">-</strong></article>
+        <article><span>Unrealized</span><strong id="unrealized-pnl">-</strong></article>
         <article><span>Mode</span><strong id="mode-label">Paper</strong></article>
       </section>
 
@@ -41,13 +41,25 @@
         </div>
 
         <div class="panel grid-panel">
-          <div class="panel-head"><h2>Dynamic Grid</h2><span>ATR reset map</span></div>
-          <div id="grid-plans" class="grid-plans"></div>
+          <div class="panel-head"><h2>Strategy Stack</h2><span>Grid + momentum</span></div>
+          <div id="strategy-plans" class="grid-plans"></div>
         </div>
 
         <div class="panel orders-panel">
-          <div class="panel-head"><h2>Intent Tape</h2><span>Paper only</span></div>
-          <div id="orders" class="orders empty-state"><span>No active intents</span></div>
+          <div class="panel-head"><h2>Execution Tape</h2><span>Paper fills</span></div>
+          <div id="fills" class="orders empty-state"><span>No fills yet</span></div>
+        </div>
+      </section>
+
+      <section class="positions reveal delay-3">
+        <div class="panel">
+          <div class="panel-head"><h2>Positions</h2><span>Marked to market</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>LTP</th><th>Unrealized</th></tr></thead>
+              <tbody id="positions-body"></tbody>
+            </table>
+          </div>
         </div>
       </section>
     </main>

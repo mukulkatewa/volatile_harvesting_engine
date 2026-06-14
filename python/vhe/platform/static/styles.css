@@ -187,3 +187,16 @@ tbody tr.flash { animation: row-flash 520ms ease; }
   .metrics article { min-height: 78px; }
   .plan-meta { grid-template-columns: 1fr; }
 }
+
+.positions {
+  margin-top: 14px;
+}
+
+.positions .panel {
+  min-height: 220px;
+}
+
+.metrics strong.buy,
+.metrics strong.sell {
+  font-size: 28px;
+}

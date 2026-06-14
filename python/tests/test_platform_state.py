@@ -6,7 +6,7 @@ from vhe.platform.state import PlatformState
 
 
 def test_platform_state_snapshot_serializes_quotes() -> None:
-    state = PlatformState(connected=True)
+    state = PlatformState(connected=True, portfolio={"equity": 25000}, fills=[])
     state.quotes["AAA"] = LiveQuote(
         timestamp=datetime.now(tz=timezone.utc),
         symbol="AAA",
@@ -25,3 +25,5 @@ def test_platform_state_snapshot_serializes_quotes() -> None:
     assert "server_time" in snapshot
     assert snapshot["quotes"]["AAA"]["ltp"] == 100
     assert snapshot["quotes"]["AAA"]["age_ms"] >= 0
+    assert snapshot["portfolio"]["equity"] == 25000
+    assert snapshot["fills"] == []
