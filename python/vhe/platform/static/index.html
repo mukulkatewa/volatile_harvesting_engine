@@ -14,8 +14,10 @@
           <h1>Strategy Control</h1>
         </div>
         <div class="actions">
-          <button class="icon-button" title="Pause automation" aria-label="Pause automation">II</button>
-          <button class="icon-button danger" title="Kill switch" aria-label="Kill switch">!</button>
+          <button id="pause-button" class="icon-button" title="Pause automation" aria-label="Pause automation">II</button>
+          <button id="resume-button" class="icon-button" title="Resume automation" aria-label="Resume automation">▶</button>
+          <button id="demo-fill-button" class="icon-button accent" title="Demo paper fill" aria-label="Demo paper fill">₹</button>
+          <button id="kill-button" class="icon-button danger" title="Kill switch" aria-label="Kill switch">!</button>
           <div class="status"><span id="connection-dot" class="dot"></span><span id="connection-label">Connecting</span></div>
         </div>
       </section>
@@ -25,6 +27,7 @@
         <article><span>Cash</span><strong id="cash">-</strong></article>
         <article><span>Unrealized</span><strong id="unrealized-pnl">-</strong></article>
         <article><span>Mode</span><strong id="mode-label">Paper</strong></article>
+        <article><span>Risk</span><strong id="risk-label">Clear</strong></article>
       </section>
 
       <section class="ticker reveal delay-2" id="ticker"></section>

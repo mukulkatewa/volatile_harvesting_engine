@@ -7,7 +7,9 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from vhe.backtest.models import Order, OrderSide, OrderType
 from vhe.execution.paper import PaperBroker
+from vhe.execution.risk import RiskConfig, RiskGuard
 from vhe.live.feed import SimulatedQuoteFeed
 from vhe.platform.state import PlatformState
 from vhe.strategies.dynamic_grid import DynamicGridInputs, DynamicGridStrategy
@@ -21,6 +23,7 @@ state = PlatformState()
 grid_strategy = DynamicGridStrategy()
 momentum_strategy = MomentumStrategy()
 paper_broker = PaperBroker(initial_cash=25_000.0)
+risk_guard = RiskGuard(RiskConfig())
 feed_task: asyncio.Task | None = None
 subscribers: set[WebSocket] = set()
 
@@ -41,6 +44,59 @@ async def index() -> str:
 
 @app.get("/api/state")
 async def api_state() -> dict:
+    return state.snapshot()
+
+
+@app.post("/api/control/pause")
+async def pause_automation() -> dict:
+    risk_guard.automation_paused = True
+    state.controls.automation_paused = True
+    await _broadcast_state()
+    return state.snapshot()
+
+
+@app.post("/api/control/resume")
+async def resume_automation() -> dict:
+    risk_guard.automation_paused = False
+    risk_guard.kill_switch = False
+    state.controls.automation_paused = False
+    state.controls.kill_switch = False
+    state.controls.last_risk_reject = None
+    await _broadcast_state()
+    return state.snapshot()
+
+
+@app.post("/api/control/kill")
+async def activate_kill_switch() -> dict:
+    risk_guard.kill_switch = True
+    state.controls.kill_switch = True
+    state.controls.last_risk_reject = "kill_switch_active"
+    await _broadcast_state()
+    return state.snapshot()
+
+
+@app.post("/api/control/demo-fill")
+async def demo_fill() -> dict:
+    if not state.quotes:
+        return state.snapshot()
+    symbol = sorted(state.quotes)[0]
+    quote = state.quotes[symbol]
+    order = Order(
+        order_id=f"demo-{symbol}-{len(state.orders) + 1}",
+        symbol=symbol,
+        side=OrderSide.BUY,
+        order_type=OrderType.LIMIT,
+        price=quote.ltp,
+        quantity=1,
+        created_at=quote.timestamp,
+        reason="demo_paper_fill",
+    )
+    fill = paper_broker.submit(order, quote)
+    state.orders.append(order)
+    if fill is not None:
+        state.fills.append(fill)
+    state.portfolio = paper_broker.snapshot(state.quotes)
+    await _broadcast_state()
     return state.snapshot()
 
 
@@ -90,20 +146,30 @@ async def _run_feed() -> None:
             )
         )
 
-        orders = grid_strategy.orders_from_plan(grid_plan, quote) + momentum_strategy.orders_from_plan(momentum_plan, quote)
-        fills = []
-        for order in orders:
-            fill = paper_broker.submit(order, quote)
-            if fill is not None:
-                fills.append(fill)
-
         state.quotes[quote.symbol] = quote
         state.plans[quote.symbol] = grid_plan
         state.momentum_plans[quote.symbol] = momentum_plan
+        state.portfolio = paper_broker.snapshot(state.quotes)
+
+        orders = grid_strategy.orders_from_plan(grid_plan, quote) + momentum_strategy.orders_from_plan(momentum_plan, quote)
+        fills = _submit_orders(orders, quote)
         state.orders.extend(orders)
         state.fills.extend(fills)
         state.portfolio = paper_broker.snapshot(state.quotes)
         await _broadcast_state()
+
+
+def _submit_orders(orders: list[Order], quote) -> list:
+    fills = []
+    for order in orders:
+        decision = risk_guard.evaluate(order, state.portfolio)
+        if not decision.approved:
+            state.controls.last_risk_reject = decision.reason
+            continue
+        fill = paper_broker.submit(order, quote)
+        if fill is not None:
+            fills.append(fill)
+    return fills
 
 
 def _simulated_regime(quote) -> MarketRegime:

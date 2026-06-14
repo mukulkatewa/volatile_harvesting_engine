@@ -27,3 +27,4 @@ def test_platform_state_snapshot_serializes_quotes() -> None:
     assert snapshot["quotes"]["AAA"]["age_ms"] >= 0
     assert snapshot["portfolio"]["equity"] == 25000
     assert snapshot["fills"] == []
+    assert snapshot["controls"]["kill_switch"] is False

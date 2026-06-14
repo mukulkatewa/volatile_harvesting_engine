@@ -200,3 +200,17 @@ tbody tr.flash { animation: row-flash 520ms ease; }
 .metrics strong.sell {
   font-size: 28px;
 }
+
+.icon-button.accent {
+  color: var(--green);
+}
+
+.metrics {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+@media (max-width: 1220px) {
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

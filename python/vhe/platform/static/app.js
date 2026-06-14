@@ -2,6 +2,20 @@ const fmt = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
 const money = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 const seenPrices = new Map();
 
+const controls = [
+  ["pause-button", "/api/control/pause"],
+  ["resume-button", "/api/control/resume"],
+  ["kill-button", "/api/control/kill"],
+  ["demo-fill-button", "/api/control/demo-fill"],
+];
+
+for (const [id, endpoint] of controls) {
+  document.addEventListener("DOMContentLoaded", () => {
+    const button = document.getElementById(id);
+    if (button) button.addEventListener("click", () => postControl(endpoint));
+  });
+}
+
 function connect() {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const socket = new WebSocket(`${protocol}://${window.location.host}/ws/state`);
@@ -21,11 +35,28 @@ function render(payload) {
   document.getElementById("cash").textContent = money.format(portfolio.cash || 0);
   setPnl("unrealized-pnl", portfolio.unrealized_pnl || 0);
   document.getElementById("mode-label").textContent = titleCase(payload.mode || "paper");
+  renderRisk(payload.controls || {});
   renderTicker(payload.quotes);
   renderQuotes(payload.quotes);
   renderStrategies(payload.plans, payload.momentum_plans || {});
   renderFills(payload.fills || []);
   renderPositions((portfolio.positions || []));
+}
+
+async function postControl(endpoint) {
+  const response = await fetch(endpoint, { method: "POST" });
+  if (response.ok) render(await response.json());
+}
+
+function renderRisk(controls) {
+  const label = document.getElementById("risk-label");
+  const paused = controls.automation_paused;
+  const killed = controls.kill_switch;
+  const reject = controls.last_risk_reject;
+  label.textContent = killed ? "Killed" : paused ? "Paused" : reject ? reject : "Clear";
+  label.classList.toggle("sell", killed);
+  label.classList.toggle("stale", paused || Boolean(reject));
+  label.classList.toggle("buy", !killed && !paused && !reject);
 }
 
 function renderConnection(connected) {

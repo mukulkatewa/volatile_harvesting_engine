@@ -10,6 +10,13 @@ from vhe.strategies.momentum import MomentumPlan
 
 
 @dataclass(slots=True)
+class PlatformControls:
+    automation_paused: bool = False
+    kill_switch: bool = False
+    last_risk_reject: str | None = None
+
+
+@dataclass(slots=True)
 class PlatformState:
     quotes: dict[str, LiveQuote] = field(default_factory=dict)
     plans: dict[str, DynamicGridPlan] = field(default_factory=dict)
@@ -17,6 +24,7 @@ class PlatformState:
     orders: list[Order] = field(default_factory=list)
     fills: list[Fill] = field(default_factory=list)
     portfolio: dict = field(default_factory=dict)
+    controls: PlatformControls = field(default_factory=PlatformControls)
     source: str = "simulated"
     connected: bool = False
     mode: str = "paper"
@@ -28,6 +36,7 @@ class PlatformState:
             "connected": self.connected,
             "mode": self.mode,
             "server_time": now.isoformat(),
+            "controls": asdict(self.controls),
             "quotes": {symbol: _quote_to_dict(quote, now=now) for symbol, quote in self.quotes.items()},
             "plans": {symbol: asdict(plan) for symbol, plan in self.plans.items()},
             "momentum_plans": {symbol: asdict(plan) for symbol, plan in self.momentum_plans.items()},

@@ -140,3 +140,11 @@ Useful takeaway:
 
 - Before any broker order placement, strategy intents must flow through a paper broker that owns cash, positions, fills, fees, and mark-to-market state.
 - VHE implementation implication: the dashboard should show positions/PnL from the paper broker, not from strategy-side assumptions.
+
+## 2026-06-15: Control Plane And Paper Risk Guard
+
+Useful takeaway:
+
+- A trading console needs explicit operator controls before live order routing: pause, resume, kill switch, and visible risk rejection state.
+- VHE implementation implication: strategy generation and execution are now separated by a paper risk guard. The dashboard can show risk state and demo paper fills without enabling live broker orders.
+- The next live-readiness step should reconcile paper fills and open positions continuously before any Kite order endpoint is wired.
