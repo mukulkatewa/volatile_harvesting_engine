@@ -17,6 +17,7 @@
           <button id="pause-button" class="icon-button" title="Pause automation" aria-label="Pause automation">II</button>
           <button id="resume-button" class="icon-button" title="Resume automation" aria-label="Resume automation">▶</button>
           <button id="demo-fill-button" class="icon-button accent" title="Demo paper fill" aria-label="Demo paper fill">₹</button>
+          <button id="reset-paper-button" class="icon-button" title="Reset paper account" aria-label="Reset paper account">R</button>
           <button id="kill-button" class="icon-button danger" title="Kill switch" aria-label="Kill switch">!</button>
           <div class="status"><span id="connection-dot" class="dot"></span><span id="connection-label">Connecting</span></div>
         </div>
@@ -63,6 +64,13 @@
               <tbody id="positions-body"></tbody>
             </table>
           </div>
+        </div>
+      </section>
+
+      <section class="activity reveal delay-3">
+        <div class="panel">
+          <div class="panel-head"><h2>Activity</h2><span>Controls + risk + fills</span></div>
+          <div id="events" class="events empty-state"><span>No events yet</span></div>
         </div>
       </section>
     </main>

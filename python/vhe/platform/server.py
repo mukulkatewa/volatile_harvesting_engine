@@ -11,6 +11,7 @@ from vhe.backtest.models import Order, OrderSide, OrderType
 from vhe.execution.paper import PaperBroker
 from vhe.execution.risk import RiskConfig, RiskGuard
 from vhe.live.feed import SimulatedQuoteFeed
+from vhe.platform.events import event
 from vhe.platform.state import PlatformState
 from vhe.strategies.dynamic_grid import DynamicGridInputs, DynamicGridStrategy
 from vhe.strategies.momentum import MomentumInputs, MomentumStrategy
@@ -51,6 +52,7 @@ async def api_state() -> dict:
 async def pause_automation() -> dict:
     risk_guard.automation_paused = True
     state.controls.automation_paused = True
+    state.append_event(event("control", "Automation paused", "warning"))
     await _broadcast_state()
     return state.snapshot()
 
@@ -62,6 +64,7 @@ async def resume_automation() -> dict:
     state.controls.automation_paused = False
     state.controls.kill_switch = False
     state.controls.last_risk_reject = None
+    state.append_event(event("control", "Automation resumed"))
     await _broadcast_state()
     return state.snapshot()
 
@@ -71,6 +74,20 @@ async def activate_kill_switch() -> dict:
     risk_guard.kill_switch = True
     state.controls.kill_switch = True
     state.controls.last_risk_reject = "kill_switch_active"
+    state.append_event(event("risk", "Kill switch activated", "danger"))
+    await _broadcast_state()
+    return state.snapshot()
+
+
+@app.post("/api/control/reset-paper")
+async def reset_paper() -> dict:
+    global paper_broker
+    paper_broker = PaperBroker(initial_cash=25_000.0)
+    state.orders.clear()
+    state.fills.clear()
+    state.portfolio = paper_broker.snapshot(state.quotes)
+    state.controls.last_risk_reject = None
+    state.append_event(event("control", "Paper account reset"))
     await _broadcast_state()
     return state.snapshot()
 
@@ -95,6 +112,7 @@ async def demo_fill() -> dict:
     state.orders.append(order)
     if fill is not None:
         state.fills.append(fill)
+        state.append_event(event("fill", f"Demo fill {fill.side.value} {fill.symbol} x{fill.quantity}"))
     state.portfolio = paper_broker.snapshot(state.quotes)
     await _broadcast_state()
     return state.snapshot()
@@ -165,10 +183,12 @@ def _submit_orders(orders: list[Order], quote) -> list:
         decision = risk_guard.evaluate(order, state.portfolio)
         if not decision.approved:
             state.controls.last_risk_reject = decision.reason
+            state.append_event(event("risk", f"Rejected {order.symbol}: {decision.reason}", "warning"))
             continue
         fill = paper_broker.submit(order, quote)
         if fill is not None:
             fills.append(fill)
+            state.append_event(event("fill", f"{fill.side.value} {fill.symbol} x{fill.quantity} @ {fill.price:.2f}"))
     return fills
 
 

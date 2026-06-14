@@ -7,6 +7,7 @@ const controls = [
   ["resume-button", "/api/control/resume"],
   ["kill-button", "/api/control/kill"],
   ["demo-fill-button", "/api/control/demo-fill"],
+  ["reset-paper-button", "/api/control/reset-paper"],
 ];
 
 for (const [id, endpoint] of controls) {
@@ -41,6 +42,7 @@ function render(payload) {
   renderStrategies(payload.plans, payload.momentum_plans || {});
   renderFills(payload.fills || []);
   renderPositions((portfolio.positions || []));
+  renderEvents(payload.events || []);
 }
 
 async function postControl(endpoint) {
@@ -155,6 +157,26 @@ function renderPositions(positions) {
         <td>${fmt.format(position.last_price)}</td>
         <td class="${position.unrealized_pnl >= 0 ? "buy" : "sell"}">${money.format(position.unrealized_pnl)}</td>
       </tr>
+    `)
+    .join("");
+}
+
+function renderEvents(events) {
+  const target = document.getElementById("events");
+  if (events.length === 0) {
+    target.classList.add("empty-state");
+    target.innerHTML = "<span>No events yet</span>";
+    return;
+  }
+  target.classList.remove("empty-state");
+  target.innerHTML = events
+    .slice()
+    .reverse()
+    .map((entry) => `
+      <article class="event ${entry.severity}">
+        <div><strong>${entry.category}</strong><p>${entry.message}</p></div>
+        <time>${new Date(entry.timestamp).toLocaleTimeString("en-IN", { hour12: false })}</time>
+      </article>
     `)
     .join("");
 }

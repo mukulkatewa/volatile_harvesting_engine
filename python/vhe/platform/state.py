@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from vhe.backtest.models import Fill, Order
 from vhe.live.models import LiveQuote
+from vhe.platform.events import PlatformEvent
 from vhe.strategies.dynamic_grid import DynamicGridPlan
 from vhe.strategies.momentum import MomentumPlan
 
@@ -23,6 +24,7 @@ class PlatformState:
     momentum_plans: dict[str, MomentumPlan] = field(default_factory=dict)
     orders: list[Order] = field(default_factory=list)
     fills: list[Fill] = field(default_factory=list)
+    events: list[PlatformEvent] = field(default_factory=list)
     portfolio: dict = field(default_factory=dict)
     controls: PlatformControls = field(default_factory=PlatformControls)
     source: str = "simulated"
@@ -42,8 +44,14 @@ class PlatformState:
             "momentum_plans": {symbol: asdict(plan) for symbol, plan in self.momentum_plans.items()},
             "orders": [asdict(order) for order in self.orders[-25:]],
             "fills": [asdict(fill) for fill in self.fills[-25:]],
+            "events": [entry.to_dict() for entry in self.events[-40:]],
             "portfolio": self.portfolio,
         }
+
+    def append_event(self, entry: PlatformEvent) -> None:
+        self.events.append(entry)
+        if len(self.events) > 200:
+            del self.events[: len(self.events) - 200]
 
 
 def _quote_to_dict(quote: LiveQuote, *, now: datetime) -> dict:

@@ -214,3 +214,52 @@ tbody tr.flash { animation: row-flash 520ms ease; }
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.activity {
+  margin-top: 14px;
+}
+
+.activity .panel {
+  min-height: 260px;
+}
+
+.events {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.event {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.62);
+  animation: rise 220ms ease both;
+}
+
+.event strong {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.event p {
+  margin-top: 3px;
+}
+
+.event time {
+  color: var(--faint);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.event.warning {
+  border-color: rgba(189, 130, 26, 0.35);
+}
+
+.event.danger {
+  border-color: rgba(194, 67, 67, 0.35);
+}

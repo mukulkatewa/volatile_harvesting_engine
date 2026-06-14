@@ -148,3 +148,10 @@ Useful takeaway:
 - A trading console needs explicit operator controls before live order routing: pause, resume, kill switch, and visible risk rejection state.
 - VHE implementation implication: strategy generation and execution are now separated by a paper risk guard. The dashboard can show risk state and demo paper fills without enabling live broker orders.
 - The next live-readiness step should reconcile paper fills and open positions continuously before any Kite order endpoint is wired.
+
+## 2026-06-15: Paper Reset And Activity Log
+
+Useful takeaway:
+
+- A usable trading console needs visible audit history for operator actions, risk rejections, and paper fills.
+- VHE implementation implication: dashboard state now includes a bounded activity log and a resettable paper account so manual testing can start from a clean state without restarting the server.
