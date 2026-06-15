@@ -10,11 +10,32 @@ const controls = [
   ["reset-paper-button", "/api/control/reset-paper"],
 ];
 
-for (const [id, endpoint] of controls) {
-  document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", () => {
+  for (const [id, endpoint] of controls) {
     const button = document.getElementById(id);
     if (button) button.addEventListener("click", () => postControl(endpoint));
+  }
+
+  document.querySelectorAll(".nav-item").forEach((button) => {
+    button.addEventListener("click", () => {
+      const panel = button.dataset.panel;
+      document.querySelectorAll(".nav-item").forEach((el) => el.classList.toggle("active", el === button));
+      document.querySelectorAll(".panels .panel").forEach((el) => {
+        el.classList.toggle("active", el.dataset.panel === panel);
+      });
+    });
   });
+
+  tickClock();
+  setInterval(tickClock, 1000);
+  connect();
+});
+
+function tickClock() {
+  const now = new Date();
+  const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  const pad = (n) => String(n).padStart(2, "0");
+  document.getElementById("ist-clock").textContent = `${pad(ist.getHours())}:${pad(ist.getMinutes())}:${pad(ist.getSeconds())}`;
 }
 
 function connect() {
@@ -32,18 +53,21 @@ function connect() {
 function render(payload) {
   const portfolio = payload.portfolio || {};
   renderConnection(payload.connected);
+  document.getElementById("phase-label").textContent = payload.phase || "0";
+  document.getElementById("mode-label").textContent = titleCase(payload.mode || "paper");
+  document.getElementById("source-label").textContent = payload.source || "simulated";
   document.getElementById("equity").textContent = money.format(portfolio.equity || 0);
   document.getElementById("cash").textContent = money.format(portfolio.cash || 0);
   setPnl("unrealized-pnl", portfolio.unrealized_pnl || 0);
-  document.getElementById("mode-label").textContent = titleCase(payload.mode || "paper");
   renderRisk(payload.controls || {});
-  renderTicker(payload.quotes);
-  renderQuotes(payload.quotes);
-  renderStrategies(payload.plans, payload.momentum_plans || {});
+  renderCapital(payload.capital || {});
+  renderTicker(payload.quotes || {}, payload.regimes || {});
+  renderQuotes(payload.quotes || {}, payload.regimes || {}, payload.indicators || {});
+  renderStrategies(payload.plans || {}, payload.momentum_plans || {}, payload.regimes || {});
   renderPairs(payload.pair_plans || {});
   renderPairTrades(payload.pair_trades || []);
   renderFills(payload.fills || []);
-  renderPositions((portfolio.positions || []));
+  renderPositions(portfolio.positions || []);
   renderEvents(payload.events || []);
 }
 
@@ -58,14 +82,13 @@ function renderRisk(controls) {
   const killed = controls.kill_switch;
   const reject = controls.last_risk_reject;
   label.textContent = killed ? "Killed" : paused ? "Paused" : reject ? reject : "Clear";
-  label.classList.toggle("sell", killed);
-  label.classList.toggle("stale", paused || Boolean(reject));
-  label.classList.toggle("buy", !killed && !paused && !reject);
+  label.className = "risk-pill";
+  label.classList.add(killed ? "sell" : paused || reject ? "stale" : "buy");
 }
 
 function renderConnection(connected) {
   document.getElementById("connection-dot").classList.toggle("live", connected);
-  document.getElementById("connection-label").textContent = connected ? "Live" : "Disconnected";
+  document.getElementById("connection-label").textContent = connected ? "Live Feed" : "Disconnected";
 }
 
 function setPnl(id, value) {
@@ -75,49 +98,98 @@ function setPnl(id, value) {
   target.classList.toggle("sell", value < 0);
 }
 
-function renderTicker(quotes) {
-  document.getElementById("ticker").innerHTML = Object.values(quotes)
-    .sort((a, b) => a.symbol.localeCompare(b.symbol))
-    .map((quote) => `<div class="ticker-chip"><strong>${quote.symbol}</strong><span>${fmt.format(quote.ltp)}</span></div>`)
+function renderCapital(capital) {
+  const target = document.getElementById("capital-bars");
+  if (!capital.total) {
+    target.innerHTML = `<div class="muted">Loading buckets…</div>`;
+    return;
+  }
+  const rows = [
+    ["grid", "Grid", capital.grid, capital.grid_pct],
+    ["pair", "Pair", capital.pair, capital.pair_pct],
+    ["momentum", "Mom", capital.momentum, capital.momentum_pct],
+    ["reserve", "Res", capital.reserve, capital.reserve_pct],
+  ];
+  target.innerHTML = rows
+    .map(
+      ([cls, label, amount, pct]) => `
+        <div class="capital-row">
+          <label>${label}</label>
+          <div class="bar-track"><div class="bar-fill ${cls}" style="width:${Math.round((pct || 0) * 100)}%"></div></div>
+          <strong>${money.format(amount || 0)}</strong>
+        </div>
+      `,
+    )
     .join("");
 }
 
-function renderQuotes(quotes) {
-  document.getElementById("quotes-body").innerHTML = Object.values(quotes)
+function renderTicker(quotes, regimes) {
+  document.getElementById("ticker").innerHTML = Object.values(quotes)
     .sort((a, b) => a.symbol.localeCompare(b.symbol))
     .map((quote) => {
       const previous = seenPrices.get(quote.symbol);
-      const changed = previous !== undefined && previous !== quote.ltp;
+      const direction = previous === undefined ? "" : quote.ltp > previous ? "up" : quote.ltp < previous ? "down" : "";
       seenPrices.set(quote.symbol, quote.ltp);
+      const regime = regimes[quote.symbol] || "—";
+      return `
+        <div class="ticker-chip ${direction}">
+          <div><strong>${quote.symbol}</strong><div class="muted" style="font-size:10px;margin-top:4px">${regime}</div></div>
+          <span>${fmt.format(quote.ltp)}</span>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderQuotes(quotes, regimes, indicators) {
+  document.getElementById("quotes-body").innerHTML = Object.values(quotes)
+    .sort((a, b) => a.symbol.localeCompare(b.symbol))
+    .map((quote) => {
+      const previous = seenPrices.get(`table-${quote.symbol}`);
+      const flash = previous === undefined ? "" : quote.ltp > previous ? "flash-up" : quote.ltp < previous ? "flash-down" : "";
+      seenPrices.set(`table-${quote.symbol}`, quote.ltp);
+      const regime = regimes[quote.symbol] || "UNKNOWN";
+      const adx = indicators[quote.symbol]?.adx_14 ?? "—";
       const ageClass = quote.age_ms > 2000 ? "stale" : "";
       return `
-        <tr class="${changed ? "flash" : ""}">
+        <tr class="${flash}">
           <td><strong>${quote.symbol}</strong></td>
-          <td>${fmt.format(quote.ltp)}</td>
-          <td>${quote.spread_bps === null ? "-" : fmt.format(quote.spread_bps)}</td>
-          <td class="${ageClass}">${quote.age_ms}ms</td>
-          <td>${fmt.format(quote.volume)}</td>
+          <td class="mono">${fmt.format(quote.ltp)}</td>
+          <td><span class="regime-pill ${regime}">${regime}</span></td>
+          <td class="mono">${typeof adx === "number" ? fmt.format(adx) : adx}</td>
+          <td>${quote.spread_bps === null ? "—" : fmt.format(quote.spread_bps)}</td>
+          <td class="${ageClass} mono">${quote.age_ms}ms</td>
         </tr>
       `;
     })
     .join("");
 }
 
-function renderStrategies(gridPlans, momentumPlans) {
+function renderStrategies(gridPlans, momentumPlans, regimes) {
   const symbols = [...new Set([...Object.keys(gridPlans), ...Object.keys(momentumPlans)])].sort();
-  document.getElementById("strategy-plans").innerHTML = symbols
+  const target = document.getElementById("strategy-plans");
+  if (symbols.length === 0) {
+    target.innerHTML = `<div class="empty-state"><span>Waiting for feed…</span></div>`;
+    return;
+  }
+  target.innerHTML = symbols
     .map((symbol) => {
       const grid = gridPlans[symbol];
       const momentum = momentumPlans[symbol];
+      const regime = regimes[symbol] || grid?.regime || "—";
       return `
-        <article class="plan">
-          <div class="plan-head"><strong>${symbol}</strong><span class="muted">${grid?.regime || "-"}</span></div>
-          <div class="plan-meta">
-            <div><span>Fair value</span><strong>${grid ? fmt.format(grid.fair_value) : "-"}</strong></div>
-            <div><span>Grid spacing</span><strong>${grid ? fmt.format(grid.spacing) : "-"}</strong></div>
-            <div><span>Momentum</span><strong class="${momentum?.enabled ? "buy" : "muted"}">${momentum?.enabled ? "Armed" : momentum?.reason || "-"}</strong></div>
+        <article class="strategy-card">
+          <div class="strategy-head">
+            <strong>${symbol}</strong>
+            <span class="regime-pill ${regime}">${regime}</span>
+          </div>
+          <div class="strategy-meta">
+            <div><span>Fair value</span><strong>${grid ? fmt.format(grid.fair_value) : "—"}</strong></div>
+            <div><span>Spacing</span><strong>${grid ? fmt.format(grid.spacing) : "—"}</strong></div>
+            <div><span>Momentum</span><strong class="${momentum?.enabled ? "buy" : "muted"}">${momentum?.enabled ? "Armed" : momentum?.reason || "—"}</strong></div>
           </div>
           <div class="levels">${(grid?.buy_levels || []).map((level) => `<span class="level">${fmt.format(level)}</span>`).join("")}</div>
+          ${grid?.reset_reason ? `<p class="muted" style="margin-top:10px;font-size:11px">Reset: ${grid.reset_reason}</p>` : ""}
         </article>
       `;
     })
@@ -128,19 +200,20 @@ function renderPairs(pairPlans) {
   const target = document.getElementById("pair-plans");
   const plans = Object.values(pairPlans);
   if (plans.length === 0) {
-    target.innerHTML = `<article class="plan"><span class="muted">Waiting for both legs</span></article>`;
+    target.innerHTML = `<div class="empty-state"><span>Waiting for both legs</span></div>`;
     return;
   }
   target.innerHTML = plans
     .sort((a, b) => a.pair_id.localeCompare(b.pair_id))
     .map((plan) => `
-      <article class="plan">
-        <div class="plan-head"><strong>${plan.pair_id}</strong><span class="${plan.enabled ? "buy" : "muted"}">${plan.action}</span></div>
-        <div class="plan-meta">
-          <div><span>Z-score</span><strong>${fmt.format(plan.zscore)}</strong></div>
+      <article class="strategy-card">
+        <div class="strategy-head"><strong>${plan.pair_id}</strong><span class="${plan.enabled ? "buy" : "muted"}">${plan.action}</span></div>
+        <div class="strategy-meta">
+          <div><span>Z-score</span><strong class="${Math.abs(plan.zscore) >= 1.5 ? "buy" : ""}">${fmt.format(plan.zscore)}</strong></div>
           <div><span>Spread</span><strong>${fmt.format(plan.spread)}</strong></div>
           <div><span>Qty A/B</span><strong>${plan.quantity_a || 0}/${plan.quantity_b || 0}</strong></div>
         </div>
+        <p class="muted" style="margin-top:10px;font-size:11px">${plan.reason}</p>
       </article>
     `)
     .join("");
@@ -157,12 +230,14 @@ function renderPairTrades(trades) {
   target.innerHTML = trades
     .slice()
     .reverse()
-    .map((trade) => `
-      <article class="order">
-        <div><strong class="${trade.status === "CLOSED" ? "buy" : "stale"}">${trade.status}</strong><span> ${trade.pair_id}</span><p class="muted">${trade.trade_id}</p></div>
-        <div><strong class="${trade.realized_pnl >= 0 ? "buy" : "sell"}">${money.format(trade.realized_pnl || 0)}</strong><p class="muted">Fees ${money.format(trade.fees_paid || 0)}</p></div>
+    .map(
+      (trade) => `
+      <article class="tape-item">
+        <div><strong class="${trade.status === "CLOSED" ? "buy" : "stale"}">${trade.status}</strong><p>${trade.pair_id} · ${trade.trade_id}</p></div>
+        <div><strong class="${trade.realized_pnl >= 0 ? "buy" : "sell"}">${money.format(trade.realized_pnl || 0)}</strong></div>
       </article>
-    `)
+    `,
+    )
     .join("");
 }
 
@@ -177,12 +252,14 @@ function renderFills(fills) {
   target.innerHTML = fills
     .slice()
     .reverse()
-    .map((fill) => `
-      <article class="order">
-        <div><strong class="${fill.side === "BUY" ? "buy" : "sell"}">${fill.side}</strong><span> ${fill.symbol}</span><p class="muted">${fill.reason}</p></div>
-        <div><strong>${fmt.format(fill.price)}</strong><p class="muted">Qty ${fill.quantity}</p></div>
+    .map(
+      (fill) => `
+      <article class="tape-item">
+        <div><strong class="${fill.side === "BUY" ? "buy" : "sell"}">${fill.side}</strong><p>${fill.symbol} · ${fill.reason || "—"}</p></div>
+        <div><strong class="mono">${fmt.format(fill.price)}</strong><p>Qty ${fill.quantity}</p></div>
       </article>
-    `)
+    `,
+    )
     .join("");
 }
 
@@ -193,15 +270,17 @@ function renderPositions(positions) {
     return;
   }
   body.innerHTML = positions
-    .map((position) => `
+    .map(
+      (position) => `
       <tr>
         <td><strong>${position.symbol}</strong></td>
-        <td>${position.quantity}</td>
-        <td>${fmt.format(position.avg_price)}</td>
-        <td>${fmt.format(position.last_price)}</td>
-        <td class="${position.unrealized_pnl >= 0 ? "buy" : "sell"}">${money.format(position.unrealized_pnl)}</td>
+        <td class="mono">${position.quantity}</td>
+        <td class="mono">${fmt.format(position.avg_price)}</td>
+        <td class="mono">${fmt.format(position.last_price)}</td>
+        <td class="mono ${position.unrealized_pnl >= 0 ? "buy" : "sell"}">${money.format(position.unrealized_pnl)}</td>
       </tr>
-    `)
+    `,
+    )
     .join("");
 }
 
@@ -216,17 +295,17 @@ function renderEvents(events) {
   target.innerHTML = events
     .slice()
     .reverse()
-    .map((entry) => `
-      <article class="event ${entry.severity}">
+    .map(
+      (entry) => `
+      <article class="event-item ${entry.severity}">
         <div><strong>${entry.category}</strong><p>${entry.message}</p></div>
         <time>${new Date(entry.timestamp).toLocaleTimeString("en-IN", { hour12: false })}</time>
       </article>
-    `)
+    `,
+    )
     .join("");
 }
 
 function titleCase(value) {
   return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
 }
-
-connect();

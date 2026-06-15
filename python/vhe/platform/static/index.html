@@ -3,91 +3,135 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>VHE Control</title>
+    <title>VHE Terminal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <main class="shell">
-      <section class="topbar reveal">
-        <div>
-          <p class="eyebrow">Volatility Harvesting Engine</p>
-          <h1>Strategy Control</h1>
-        </div>
-        <div class="actions">
-          <button id="pause-button" class="icon-button" title="Pause automation" aria-label="Pause automation">II</button>
-          <button id="resume-button" class="icon-button" title="Resume automation" aria-label="Resume automation">▶</button>
-          <button id="demo-fill-button" class="icon-button accent" title="Demo paper fill" aria-label="Demo paper fill">₹</button>
-          <button id="reset-paper-button" class="icon-button" title="Reset paper account" aria-label="Reset paper account">R</button>
-          <button id="kill-button" class="icon-button danger" title="Kill switch" aria-label="Kill switch">!</button>
-          <div class="status"><span id="connection-dot" class="dot"></span><span id="connection-label">Connecting</span></div>
-        </div>
-      </section>
-
-      <section class="metrics reveal delay-1">
-        <article><span>Equity</span><strong id="equity">-</strong></article>
-        <article><span>Cash</span><strong id="cash">-</strong></article>
-        <article><span>Unrealized</span><strong id="unrealized-pnl">-</strong></article>
-        <article><span>Mode</span><strong id="mode-label">Paper</strong></article>
-        <article><span>Risk</span><strong id="risk-label">Clear</strong></article>
-      </section>
-
-      <section class="ticker reveal delay-2" id="ticker"></section>
-
-      <section class="workspace reveal delay-3">
-        <div class="panel quotes-panel">
-          <div class="panel-head"><h2>Market Feed</h2><span>Top of book</span></div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Symbol</th><th>LTP</th><th>Spread</th><th>Age</th><th>Volume</th></tr></thead>
-              <tbody id="quotes-body"></tbody>
-            </table>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">V</div>
+          <div>
+            <strong>VHE</strong>
+            <span>Volatility Engine</span>
           </div>
         </div>
-
-        <div class="panel grid-panel">
-          <div class="panel-head"><h2>Strategy Stack</h2><span>Grid + momentum</span></div>
-          <div id="strategy-plans" class="grid-plans"></div>
+        <nav class="nav">
+          <button class="nav-item active" data-panel="terminal">Terminal</button>
+          <button class="nav-item" data-panel="strategies">Strategies</button>
+          <button class="nav-item" data-panel="execution">Execution</button>
+          <button class="nav-item" data-panel="activity">Activity</button>
+        </nav>
+        <div class="sidebar-meta">
+          <div class="meta-row"><span>Phase</span><strong id="phase-label">0</strong></div>
+          <div class="meta-row"><span>Mode</span><strong id="mode-label">Paper</strong></div>
+          <div class="meta-row"><span>Feed</span><strong id="source-label">simulated</strong></div>
         </div>
+      </aside>
 
-        <div class="panel orders-panel">
-          <div class="panel-head"><h2>Execution Tape</h2><span>Paper fills</span></div>
-          <div id="fills" class="orders empty-state"><span>No fills yet</span></div>
-        </div>
-      </section>
-
-      <section class="pairs reveal delay-3">
-        <div class="panel">
-          <div class="panel-head"><h2>Pair Spread</h2><span>Z-score monitor</span></div>
-          <div id="pair-plans" class="grid-plans"></div>
-        </div>
-      </section>
-
-      <section class="pair-ledger reveal delay-3">
-        <div class="panel">
-          <div class="panel-head"><h2>Pair Ledger</h2><span>Entry / exit cycles</span></div>
-          <div id="pair-trades" class="orders empty-state"><span>No pair trades yet</span></div>
-        </div>
-      </section>
-
-      <section class="positions reveal delay-3">
-        <div class="panel">
-          <div class="panel-head"><h2>Positions</h2><span>Marked to market</span></div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>LTP</th><th>Unrealized</th></tr></thead>
-              <tbody id="positions-body"></tbody>
-            </table>
+      <main class="main">
+        <header class="header">
+          <div class="header-left">
+            <div class="session-clock">
+              <span class="clock-label">IST</span>
+              <time id="ist-clock">--:--:--</time>
+            </div>
+            <div class="connection">
+              <span id="connection-dot" class="pulse-dot"></span>
+              <span id="connection-label">Connecting</span>
+            </div>
           </div>
-        </div>
-      </section>
+          <div class="header-actions">
+            <button id="pause-button" class="ctrl-btn" title="Pause">Pause</button>
+            <button id="resume-button" class="ctrl-btn primary" title="Resume">Resume</button>
+            <button id="demo-fill-button" class="ctrl-btn" title="Demo fill">Demo</button>
+            <button id="reset-paper-button" class="ctrl-btn" title="Reset paper">Reset</button>
+            <button id="kill-button" class="ctrl-btn danger" title="Kill switch">Kill</button>
+          </div>
+        </header>
 
-      <section class="activity reveal delay-3">
-        <div class="panel">
-          <div class="panel-head"><h2>Activity</h2><span>Controls + risk + fills</span></div>
-          <div id="events" class="events empty-state"><span>No events yet</span></div>
+        <section class="hero-metrics">
+          <article class="metric-card hero-equity">
+            <span>Portfolio Equity</span>
+            <strong id="equity">—</strong>
+            <div class="metric-sub">
+              <span>Cash <em id="cash">—</em></span>
+              <span class="pnl-wrap">Unrealized <em id="unrealized-pnl">—</em></span>
+            </div>
+          </article>
+          <article class="metric-card">
+            <span>Risk State</span>
+            <strong id="risk-label" class="risk-pill">Clear</strong>
+            <div class="metric-sub muted">Pre-trade guard active</div>
+          </article>
+          <article class="metric-card capital-card">
+            <span>Capital Buckets</span>
+            <div id="capital-bars" class="capital-bars"></div>
+          </article>
+        </section>
+
+        <section class="ticker-strip" id="ticker"></section>
+
+        <div class="panels">
+          <section class="panel terminal-panel active" data-panel="terminal">
+            <div class="panel-grid">
+              <div class="card">
+                <div class="card-head"><h2>Market Feed</h2><span>Live quotes</span></div>
+                <div class="table-wrap">
+                  <table class="data-table">
+                    <thead><tr><th>Symbol</th><th>LTP</th><th>Regime</th><th>ADX</th><th>Spread</th><th>Age</th></tr></thead>
+                    <tbody id="quotes-body"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="card">
+                <div class="card-head"><h2>Positions</h2><span>MTM</span></div>
+                <div class="table-wrap">
+                  <table class="data-table">
+                    <thead><tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>LTP</th><th>PnL</th></tr></thead>
+                    <tbody id="positions-body"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel strategies-panel" data-panel="strategies">
+            <div class="card full">
+              <div class="card-head"><h2>Strategy Stack</h2><span>Grid · Momentum · Pair</span></div>
+              <div id="strategy-plans" class="strategy-grid"></div>
+            </div>
+            <div class="card full">
+              <div class="card-head"><h2>Pair Spread Monitor</h2><span>Z-score engine</span></div>
+              <div id="pair-plans" class="strategy-grid"></div>
+            </div>
+          </section>
+
+          <section class="panel execution-panel" data-panel="execution">
+            <div class="panel-grid">
+              <div class="card">
+                <div class="card-head"><h2>Execution Tape</h2><span>Paper fills</span></div>
+                <div id="fills" class="tape empty-state"><span>No fills yet</span></div>
+              </div>
+              <div class="card">
+                <div class="card-head"><h2>Pair Ledger</h2><span>Multi-leg cycles</span></div>
+                <div id="pair-trades" class="tape empty-state"><span>No pair trades yet</span></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel activity-panel" data-panel="activity">
+            <div class="card full">
+              <div class="card-head"><h2>Activity Stream</h2><span>Controls · risk · fills</span></div>
+              <div id="events" class="activity-stream empty-state"><span>No events yet</span></div>
+            </div>
+          </section>
         </div>
-      </section>
-    </main>
+      </main>
+    </div>
     <script src="/static/app.js"></script>
   </body>
 </html>
