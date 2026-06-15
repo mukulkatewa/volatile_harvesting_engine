@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from vhe.backtest.models import Fill, Order
 from vhe.config.loader import PlatformConfig
 from vhe.execution.capital import CapitalAllocator
+from vhe.execution.execution_engine import ExecutionEngine
 from vhe.execution.pair_ledger import PairLedger
 from vhe.execution.paper import PaperBroker
 from vhe.execution.risk import RiskConfig, RiskGuard
@@ -24,7 +25,7 @@ from vhe.strategies.regime import MarketRegime
 class StrategyOrchestrator:
     config: PlatformConfig
     state: PlatformState
-    paper_broker: PaperBroker
+    execution: ExecutionEngine
     pair_ledger: PairLedger
     risk_guard: RiskGuard
     capital_allocator: CapitalAllocator
@@ -72,6 +73,10 @@ class StrategyOrchestrator:
 
     def is_pair_symbol(self, symbol: str) -> bool:
         return symbol in {self.pair_strategy.config.symbol_a, self.pair_strategy.config.symbol_b}
+
+    @property
+    def paper_broker(self) -> PaperBroker:
+        return self.execution.paper_broker
 
     def single_name_quantity(self, symbol: str) -> int:
         if self.is_pair_symbol(symbol):
@@ -147,8 +152,20 @@ class StrategyOrchestrator:
         pair_fills = self._submit_pair_orders_atomic(pair_orders)
         self.state.orders.extend(single_name_orders + pair_orders)
         self.state.fills.extend(single_name_fills + pair_fills)
-        self.state.portfolio = self.paper_broker.snapshot(self.state.quotes)
+        self.state.portfolio = self.execution.snapshot_portfolio(self.state.quotes)
         self.state.capital = self.capital_allocator.buckets_snapshot()
+        self.state.execution_orders = self.execution.orders_snapshot()
+        self.state.strategy_status = self._strategy_status(grid_plan, momentum_plan, regime)
+
+    def _strategy_status(self, grid_plan: DynamicGridPlan, momentum_plan: MomentumPlan, regime: MarketRegime) -> dict:
+        pair_plan = next(iter(self.state.pair_plans.values()), None)
+        return {
+            "regime": regime.value,
+            "grid": "ACTIVE" if grid_plan.buy_levels else "WAITING",
+            "momentum": "ARMED" if momentum_plan.enabled else "OFF",
+            "pair": pair_plan.action if pair_plan else "WAITING",
+            "edge": _edge_note(regime),
+        }
 
     def _submit_pair_orders_atomic(self, orders: list[Order]) -> list[Fill]:
         if not orders:
@@ -164,12 +181,12 @@ class StrategyOrchestrator:
                 self._log_event(event("risk", f"Rejected pair batch: {decision.reason}", "warning"))
                 return []
 
-        fills = self.paper_broker.submit_atomic(orders, self.state.quotes)
+        fills = self.execution.submit_atomic(orders, self.state.quotes)
         if not fills:
             self._log_event(event("risk", "Rejected pair batch: atomic_no_fill", "warning"))
             return []
 
-        self.state.portfolio = self.paper_broker.snapshot(self.state.quotes)
+        self.state.portfolio = self.execution.snapshot_portfolio(self.state.quotes)
         for fill in fills:
             self._log_event(event("fill", f"{fill.side.value} {fill.symbol} x{fill.quantity} @ {fill.price:.2f}"))
             self._persist_fill(fill)
@@ -196,10 +213,10 @@ class StrategyOrchestrator:
                 self._log_event(event("risk", f"Rejected {order.symbol}: {decision.reason}", "warning"))
                 continue
 
-            fill = self.paper_broker.submit(order, quote)
+            fill = self.execution.submit(order, quote)
             if fill is not None:
                 fills.append(fill)
-                self.state.portfolio = self.paper_broker.snapshot(self.state.quotes)
+                self.state.portfolio = self.execution.snapshot_portfolio(self.state.quotes)
                 self._log_event(event("fill", f"{fill.side.value} {fill.symbol} x{fill.quantity} @ {fill.price:.2f}"))
                 self._persist_fill(fill)
         return fills
@@ -227,3 +244,13 @@ def build_risk_guard(config: PlatformConfig) -> RiskGuard:
             max_single_symbol_qty=risk.max_single_symbol_qty,
         )
     )
+
+
+def _edge_note(regime: MarketRegime) -> str:
+    if regime == MarketRegime.RANGE:
+        return "Harvest oscillation via ATR grid buys below fair value, sell at mean."
+    if regime == MarketRegime.TREND_UP:
+        return "Grid off. Momentum captures continuation; pair spread if z-score extreme."
+    if regime == MarketRegime.CRASH:
+        return "Cash mode. No new risk until regime normalizes."
+    return "Waiting for clean range or trend regime before deploying edge."

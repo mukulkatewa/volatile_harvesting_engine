@@ -22,7 +22,7 @@ def test_platform_state_snapshot_serializes_quotes() -> None:
 
     assert snapshot["connected"] is True
     assert snapshot["mode"] == "paper"
-    assert snapshot["phase"] == "1"
+    assert snapshot["phase"] == "2"
     assert "server_time" in snapshot
     assert "capital" in snapshot
     assert "regimes" in snapshot

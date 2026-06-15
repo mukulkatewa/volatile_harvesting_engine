@@ -1,5 +1,6 @@
 const fmt = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
 const money = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+const moneyCompact = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", notation: "compact", maximumFractionDigits: 1 });
 const seenPrices = new Map();
 
 const controls = [
@@ -29,6 +30,7 @@ document.addEventListener("DOMContentLoaded", () => {
   tickClock();
   setInterval(tickClock, 1000);
   connect();
+  setInterval(pollState, 1500);
 });
 
 function tickClock() {
@@ -52,15 +54,18 @@ function connect() {
 
 function render(payload) {
   const portfolio = payload.portfolio || {};
+  const capitalTotal = payload.capital?.total;
   renderConnection(payload.connected);
-  document.getElementById("phase-label").textContent = payload.phase || "0";
+  document.getElementById("phase-label").textContent = payload.phase || "2";
   document.getElementById("mode-label").textContent = titleCase(payload.mode || "paper");
   document.getElementById("source-label").textContent = payload.source || "simulated";
-  document.getElementById("equity").textContent = money.format(portfolio.equity || 0);
-  document.getElementById("cash").textContent = money.format(portfolio.cash || 0);
+  const equity = portfolio.equity ?? portfolio.cash ?? capitalTotal ?? 0;
+  document.getElementById("equity").textContent = money.format(equity);
+  document.getElementById("cash").textContent = money.format(portfolio.cash ?? capitalTotal ?? 0);
   setPnl("unrealized-pnl", portfolio.unrealized_pnl || 0);
   renderRisk(payload.controls || {});
   renderCapital(payload.capital || {});
+  renderStrategyStatus(payload.strategy_status || {});
   renderFeedHealth(payload.feed_health || {}, payload.source);
   renderBars(payload.bars || {});
   renderTicker(payload.quotes || {}, payload.regimes || {});
@@ -71,6 +76,15 @@ function render(payload) {
   renderFills(payload.fills || []);
   renderPositions(portfolio.positions || []);
   renderEvents(payload.events || []);
+}
+
+async function pollState() {
+  try {
+    const response = await fetch("/api/state");
+    if (response.ok) render(await response.json());
+  } catch {
+    // ignore transient network errors
+  }
 }
 
 async function postControl(endpoint) {
@@ -146,10 +160,13 @@ function renderBars(bars) {
 
 function renderCapital(capital) {
   const target = document.getElementById("capital-bars");
+  const totalLabel = document.getElementById("capital-total");
   if (!capital.total) {
     target.innerHTML = `<div class="muted">Loading buckets…</div>`;
+    if (totalLabel) totalLabel.textContent = "—";
     return;
   }
+  if (totalLabel) totalLabel.textContent = money.format(capital.total);
   const rows = [
     ["grid", "Grid", capital.grid, capital.grid_pct],
     ["pair", "Pair", capital.pair, capital.pair_pct],
@@ -162,10 +179,26 @@ function renderCapital(capital) {
         <div class="capital-row">
           <label>${label}</label>
           <div class="bar-track"><div class="bar-fill ${cls}" style="width:${Math.round((pct || 0) * 100)}%"></div></div>
-          <strong>${money.format(amount || 0)}</strong>
+          <strong title="${money.format(amount || 0)}">${moneyCompact.format(amount || 0)}</strong>
         </div>
       `,
     )
+    .join("");
+}
+
+function renderStrategyStatus(status) {
+  const note = document.getElementById("edge-note");
+  const chips = document.getElementById("strategy-status");
+  if (!note || !chips) return;
+  note.textContent = status.edge || "Waiting for market regime…";
+  const items = [
+    ["Regime", status.regime || "—", "wait"],
+    ["Grid", status.grid || "OFF", status.grid === "ACTIVE" ? "on" : "off"],
+    ["Momentum", status.momentum || "OFF", status.momentum === "ARMED" ? "on" : "off"],
+    ["Pair", status.pair || "WAITING", status.pair && status.pair !== "WAIT" && status.pair !== "WAITING" ? "on" : "wait"],
+  ];
+  chips.innerHTML = items
+    .map(([label, value, cls]) => `<span class="status-chip ${cls}">${label}: ${value}</span>`)
     .join("");
 }
 

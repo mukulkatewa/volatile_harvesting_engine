@@ -7,8 +7,10 @@ from pathlib import Path
 
 from vhe.config.loader import PlatformConfig, load_platform_config
 from vhe.execution.capital import CapitalAllocator
+from vhe.execution.execution_engine import ExecutionEngine
 from vhe.execution.pair_ledger import PairLedger
 from vhe.execution.paper import PaperBroker
+from vhe.execution.reconciler import Reconciler
 from vhe.live.bars import BarAggregator, OhlcvBar
 from vhe.live.feed_factory import FeedBuildResult, build_quote_feed
 from vhe.live.kite_ws import FeedHealth
@@ -33,6 +35,8 @@ class PlatformRuntime:
     bar_aggregator: BarAggregator = field(init=False)
     regime_service: RegimeService = field(init=False)
     orchestrator: StrategyOrchestrator = field(init=False)
+    execution: ExecutionEngine = field(init=False)
+    reconciler: Reconciler = field(init=False)
     database: PlatformDatabase | None = field(init=False)
     feed_health: FeedHealth = field(init=False)
     feed_task: asyncio.Task | None = None
@@ -68,10 +72,16 @@ class PlatformRuntime:
         if not db_path.is_absolute():
             db_path = self._project_root / db_path
         self.database = PlatformDatabase(db_path)
+        self.execution = ExecutionEngine.from_config(
+            mode=live.mode,
+            paper_broker=self.paper_broker,
+            broker_config=live.broker,
+        )
+        self.reconciler = Reconciler(kite_broker=self.execution.kite_broker)
         self.orchestrator = StrategyOrchestrator(
             config=self.config,
             state=self.state,
-            paper_broker=self.paper_broker,
+            execution=self.execution,
             pair_ledger=self.pair_ledger,
             risk_guard=self.risk_guard,
             capital_allocator=self.capital_allocator,
@@ -79,7 +89,9 @@ class PlatformRuntime:
             database=self.database,
         )
         self.state.capital = self.capital_allocator.buckets_snapshot()
-        self.state.phase = "1"
+        self.state.portfolio = self.execution.snapshot_portfolio({})
+        self.state.feed_health = {"source": self.config.strategies.feed.source, "connected": False}
+        self.state.phase = "2"
         self._restore_persisted_events()
 
     def _restore_persisted_events(self) -> None:
@@ -107,8 +119,13 @@ class PlatformRuntime:
     def reset_paper(self) -> None:
         live = self.config.live
         self.paper_broker = PaperBroker(initial_cash=live.capital_cap_inr)
+        self.execution = ExecutionEngine.from_config(
+            mode=live.mode,
+            paper_broker=self.paper_broker,
+            broker_config=live.broker,
+        )
+        self.orchestrator.execution = self.execution
         self.pair_ledger = PairLedger()
-        self.orchestrator.paper_broker = self.paper_broker
         self.orchestrator.pair_ledger = self.pair_ledger
         self.state.orders.clear()
         self.state.fills.clear()
@@ -120,7 +137,16 @@ class PlatformRuntime:
     async def start_feed(self) -> None:
         if self.feed_task is not None and not self.feed_task.done():
             return
-        self.feed_task = asyncio.create_task(self._run_feed())
+        self.feed_task = asyncio.create_task(self._run_feed(), name="vhe-feed")
+        self.feed_task.add_done_callback(self._feed_task_done)
+
+    def _feed_task_done(self, task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            self.state.connected = False
+            self.state.append_event(event("feed", f"Feed stopped: {exc}", "danger"))
 
     async def _run_feed(self) -> None:
         build = build_quote_feed(self.config, project_root=self._project_root)
@@ -136,8 +162,13 @@ class PlatformRuntime:
         else:
             self.state.append_event(event("feed", message, "info"))
 
-        async for quote in build.feed.stream():
-            await self._handle_quote(quote)
+        try:
+            async for quote in build.feed.stream():
+                await self._handle_quote(quote)
+        except Exception as exc:
+            self.state.connected = False
+            self.state.append_event(event("feed", f"Feed crashed: {exc}", "danger"))
+            raise
 
     def _init_feed_health(self, build: FeedBuildResult) -> None:
         self.feed_health = FeedHealth(
@@ -164,6 +195,8 @@ class PlatformRuntime:
             quotes=self.state.quotes,
             max_stale_ms=self.config.live.risk.max_quote_stale_ms,
         )
+        if self.config.live.mode == "live":
+            self.state.reconciliation = self.reconciler.sync()
         self._enforce_stale_feed_guard()
         await self._broadcast_state()
 

@@ -18,7 +18,6 @@ load_env_file()
 
 app = FastAPI(title="Volatility Harvesting Engine")
 runtime = PlatformRuntime.from_project_root()
-runtime.state.phase = "0"
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -105,7 +104,7 @@ async def demo_fill() -> dict:
         created_at=quote.timestamp,
         reason="demo_paper_fill",
     )
-    fill = runtime.paper_broker.submit(order, quote)
+    fill = runtime.execution.submit(order, quote)
     runtime.state.orders.append(order)
     if fill is not None:
         runtime.state.fills.append(fill)

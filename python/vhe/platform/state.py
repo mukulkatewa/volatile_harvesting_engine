@@ -35,10 +35,13 @@ class PlatformState:
     indicators: dict[str, dict] = field(default_factory=dict)
     bars: dict[str, dict] = field(default_factory=dict)
     feed_health: dict = field(default_factory=dict)
+    strategy_status: dict = field(default_factory=dict)
+    execution_orders: list[dict] = field(default_factory=list)
+    reconciliation: dict = field(default_factory=dict)
     source: str = "simulated"
     connected: bool = False
     mode: str = "paper"
-    phase: str = "1"
+    phase: str = "2"
 
     def snapshot(self) -> dict:
         now = datetime.now(tz=timezone.utc)
@@ -54,6 +57,9 @@ class PlatformState:
             "indicators": self.indicators,
             "bars": self.bars,
             "feed_health": self.feed_health,
+            "strategy_status": self.strategy_status,
+            "execution_orders": self.execution_orders,
+            "reconciliation": self.reconciliation,
             "quotes": {symbol: _quote_to_dict(quote, now=now) for symbol, quote in self.quotes.items()},
             "plans": {symbol: asdict(plan) for symbol, plan in self.plans.items()},
             "momentum_plans": {symbol: asdict(plan) for symbol, plan in self.momentum_plans.items()},
