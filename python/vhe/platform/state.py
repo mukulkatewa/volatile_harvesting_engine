@@ -30,9 +30,13 @@ class PlatformState:
     events: list[PlatformEvent] = field(default_factory=list)
     portfolio: dict = field(default_factory=dict)
     controls: PlatformControls = field(default_factory=PlatformControls)
+    capital: dict = field(default_factory=dict)
+    regimes: dict[str, str] = field(default_factory=dict)
+    indicators: dict[str, dict] = field(default_factory=dict)
     source: str = "simulated"
     connected: bool = False
     mode: str = "paper"
+    phase: str = "0"
 
     def snapshot(self) -> dict:
         now = datetime.now(tz=timezone.utc)
@@ -40,8 +44,12 @@ class PlatformState:
             "source": self.source,
             "connected": self.connected,
             "mode": self.mode,
+            "phase": self.phase,
             "server_time": now.isoformat(),
             "controls": asdict(self.controls),
+            "capital": self.capital,
+            "regimes": self.regimes,
+            "indicators": self.indicators,
             "quotes": {symbol: _quote_to_dict(quote, now=now) for symbol, quote in self.quotes.items()},
             "plans": {symbol: asdict(plan) for symbol, plan in self.plans.items()},
             "momentum_plans": {symbol: asdict(plan) for symbol, plan in self.momentum_plans.items()},

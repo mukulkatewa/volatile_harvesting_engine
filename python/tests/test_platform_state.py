@@ -22,7 +22,10 @@ def test_platform_state_snapshot_serializes_quotes() -> None:
 
     assert snapshot["connected"] is True
     assert snapshot["mode"] == "paper"
+    assert snapshot["phase"] == "0"
     assert "server_time" in snapshot
+    assert "capital" in snapshot
+    assert "regimes" in snapshot
     assert snapshot["quotes"]["AAA"]["ltp"] == 100
     assert snapshot["quotes"]["AAA"]["age_ms"] >= 0
     assert snapshot["portfolio"]["equity"] == 25000
@@ -32,13 +35,14 @@ def test_platform_state_snapshot_serializes_quotes() -> None:
 
 def test_platform_server_reserves_pair_symbols_from_single_name_quantity() -> None:
     from vhe.execution.paper import PaperPosition
-    from vhe.platform import server
+    from vhe.platform.runtime import PlatformRuntime
 
-    server.paper_broker.positions["RELIANCE"] = PaperPosition(symbol="RELIANCE", quantity=-4, avg_price=1000)
-    server.paper_broker.positions["BEL"] = PaperPosition(symbol="BEL", quantity=3, avg_price=100)
+    runtime = PlatformRuntime.from_project_root()
+    runtime.paper_broker.positions["RELIANCE"] = PaperPosition(symbol="RELIANCE", quantity=-4, avg_price=1000)
+    runtime.paper_broker.positions["BEL"] = PaperPosition(symbol="BEL", quantity=3, avg_price=100)
 
-    assert server._is_pair_symbol("RELIANCE") is True
-    assert server._single_name_quantity("RELIANCE") == 0
-    assert server._single_name_quantity("BEL") == 3
+    assert runtime.orchestrator.is_pair_symbol("RELIANCE") is True
+    assert runtime.orchestrator.single_name_quantity("RELIANCE") == 0
+    assert runtime.orchestrator.single_name_quantity("BEL") == 3
 
-    server.paper_broker.positions.clear()
+    runtime.paper_broker.positions.clear()

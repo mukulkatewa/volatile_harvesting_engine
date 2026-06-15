@@ -1,0 +1,40 @@
+grid:
+  atr_multiplier: 0.35
+  max_levels: 5
+  no_buy_above_fair_value_pct: 0.03
+  min_spacing: 0.05
+
+momentum:
+  risk_per_trade_inr: 62.5
+  max_capital_per_trade_inr: 3750.0
+
+pair:
+  symbol_a: RELIANCE
+  symbol_b: HDFCBANK
+  hedge_ratio: 1.0
+  mean: -0.04
+  std: 0.006
+  entry_z: 1.5
+  exit_z: 0.25
+  max_abs_z: 3.0
+
+capital:
+  grid_bucket_pct: 0.50
+  pair_bucket_pct: 0.25
+  momentum_bucket_pct: 0.15
+  reserve_bucket_pct: 0.10
+
+regime:
+  range_adx_threshold: 20.0
+  trend_adx_threshold: 25.0
+  fair_value_band_pct: 0.03
+  crash_drawdown_pct: -1.5
+
+feed:
+  symbols:
+    - RELIANCE
+    - HDFCBANK
+    - TATAMOTORS
+    - BEL
+  interval_seconds: 0.75
+  source: simulated

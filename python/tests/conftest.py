@@ -9,3 +9,11 @@ PYTHON_DIR = ROOT / "python"
 
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
+
+
+import pytest
+
+
+@pytest.fixture
+def project_root() -> Path:
+    return ROOT

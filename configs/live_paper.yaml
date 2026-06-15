@@ -3,13 +3,22 @@ capital_cap_inr: 25000
 max_symbols: 2
 max_grid_levels: 5
 force_exit_time: "15:10"
+config_dir: configs
 
 broker:
   provider: zerodha
-  websocket_enabled: true
+  websocket_enabled: false
 
 risk:
-  reserve_capital_pct: 0.25
+  reserve_capital_pct: 0.10
   max_daily_loss_pct: 0.01
+  max_gross_exposure_pct: 0.75
+  max_single_symbol_qty: 100
   kill_switch_on_stale_quotes: true
+  max_quote_stale_ms: 3000
+
+storage:
+  sqlite_path: data/vhe_platform.db
+  persist_events: true
+  persist_fills: true
 
