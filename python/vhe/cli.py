@@ -8,7 +8,10 @@ from vhe.config.models import AppConfig
 from vhe.data.panel import load_history_from_parquet_dir
 from vhe.data.service import ingest_nse_bhavcopy
 from vhe.live.kite import nse_equity_token_map
-from vhe.live.kite_instruments import cache_instruments_csv, load_cached_instruments
+from vhe.live.kite_auth import kite_login_url, load_kite_credentials
+from vhe.live.kite_instruments import KiteAuth, KiteInstrumentClient, cache_instruments_csv, load_cached_instruments
+from vhe.live.kite_session import KiteSessionClient
+from vhe.config.loader import BrokerConfig
 from vhe.scanner.daily import build_candidate_report
 
 
@@ -60,6 +63,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path("data/raw/kite"),
         help="Directory where instrument cache files are stored.",
     )
+
+    kite_login_parser = subparsers.add_parser("kite-login-url", help="Print the Zerodha login URL for today's access token.")
+    kite_login_parser.add_argument("--redirect-url", default="http://127.0.0.1", help="Redirect URL configured in the Kite app.")
+
+    kite_exchange_parser = subparsers.add_parser("kite-exchange-token", help="Exchange a request_token for an access_token.")
+    kite_exchange_parser.add_argument("--request-token", required=True, help="request_token from the login redirect URL.")
+
+    kite_download_parser = subparsers.add_parser("kite-download-instruments", help="Download and cache today's Kite instrument master.")
+    kite_download_parser.add_argument("--date", default=None, help="Trading date YYYY-MM-DD (default: today).")
+    kite_download_parser.add_argument("--cache-dir", type=Path, default=Path("data/raw/kite"))
 
     return parser
 
@@ -116,6 +129,33 @@ def main() -> None:
         missing = sorted(set(config.universe.symbols) - set(token_map))
         if missing:
             print(f"missing={','.join(missing)}")
+        return
+
+    if args.command == "kite-login-url":
+        broker = BrokerConfig()
+        credentials = load_kite_credentials(broker)
+        print(kite_login_url(credentials.api_key, redirect_url=args.redirect_url))
+        print("After login, copy request_token from the redirect URL and run:")
+        print("  vhe kite-exchange-token --request-token <token>")
+        return
+
+    if args.command == "kite-exchange-token":
+        broker = BrokerConfig()
+        credentials = load_kite_credentials(broker)
+        session = KiteSessionClient(credentials).exchange_request_token(args.request_token)
+        print(f"access_token={session.access_token}")
+        print(f"user_id={session.user_id}")
+        print(f"login_time={session.login_time}")
+        print(f"export {broker.access_token_env}={session.access_token}")
+        return
+
+    if args.command == "kite-download-instruments":
+        broker = BrokerConfig()
+        credentials = load_kite_credentials(broker)
+        as_of = date.fromisoformat(args.date) if args.date else date.today()
+        client = KiteInstrumentClient(KiteAuth(credentials.api_key, credentials.access_token))
+        result = cache_instruments_csv(client.download_csv(), cache_dir=args.cache_dir, trading_date=as_of)
+        print(f"saved={result.path} instruments={len(result.instruments)}")
         return
 
     parser.error(f"Unsupported command: {args.command}")

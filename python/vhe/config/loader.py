@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -11,6 +12,12 @@ from vhe.config.models import AppConfig
 class BrokerConfig(BaseModel):
     provider: str = "zerodha"
     websocket_enabled: bool = False
+    api_key_env: str = "KITE_API_KEY"
+    access_token_env: str = "KITE_ACCESS_TOKEN"
+    api_secret_env: str = "KITE_API_SECRET"
+    instrument_cache_dir: Path = Path("data/raw/kite")
+    subscription_mode: Literal["ltp", "quote", "full"] = "quote"
+    reconnect_seconds: float = 5.0
 
 
 class LiveRiskConfig(BaseModel):
@@ -93,6 +100,8 @@ class FeedConfig(BaseModel):
     symbols: list[str] = Field(default_factory=lambda: ["RELIANCE", "HDFCBANK", "TATAMOTORS", "BEL"])
     interval_seconds: float = 0.75
     source: str = "simulated"
+    bar_interval_minutes: int = 5
+    fallback_to_simulated: bool = True
 
 
 class StrategiesConfig(BaseModel):

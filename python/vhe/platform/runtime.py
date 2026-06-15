@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 from vhe.config.loader import PlatformConfig, load_platform_config
 from vhe.execution.capital import CapitalAllocator
 from vhe.execution.pair_ledger import PairLedger
 from vhe.execution.paper import PaperBroker
-from vhe.live.feed import SimulatedQuoteFeed
+from vhe.live.bars import BarAggregator, OhlcvBar
+from vhe.live.feed_factory import FeedBuildResult, build_quote_feed
+from vhe.live.kite_ws import FeedHealth
+from vhe.live.models import LiveQuote
 from vhe.platform.events import event
 from vhe.platform.services.indicator_service import IndicatorService
 from vhe.platform.services.regime_service import RegimeService
@@ -26,23 +30,30 @@ class PlatformRuntime:
     risk_guard: object = field(init=False)
     capital_allocator: CapitalAllocator = field(init=False)
     indicator_service: IndicatorService = field(default_factory=IndicatorService)
+    bar_aggregator: BarAggregator = field(init=False)
     regime_service: RegimeService = field(init=False)
     orchestrator: StrategyOrchestrator = field(init=False)
     database: PlatformDatabase | None = field(init=False)
+    feed_health: FeedHealth = field(init=False)
     feed_task: asyncio.Task | None = None
     subscribers: set = field(default_factory=set)
+    _project_root: Path = field(default_factory=lambda: _project_root())
 
     @classmethod
-    def from_project_root(cls, project_root: Path | None = None) -> PlatformRuntime:
-        config = load_platform_config(project_root)
-        runtime = cls(config=config)
+    def from_project_root(cls, project_root: Path | None = None, live_config_name: str | None = None) -> PlatformRuntime:
+        import os
+
+        root = project_root or _project_root()
+        config_name = live_config_name or os.environ.get("VHE_LIVE_CONFIG", "live_paper.yaml")
+        config = load_platform_config(root, live_config_name=config_name)
+        runtime = cls(config=config, _project_root=root)
         runtime.bootstrap()
         return runtime
 
     def bootstrap(self) -> None:
         live = self.config.live
         self.state.mode = live.mode
-        self.state.source = self.config.strategies.feed.source
+        self.bar_aggregator = BarAggregator(interval_minutes=self.config.strategies.feed.bar_interval_minutes)
         self.paper_broker = PaperBroker(initial_cash=live.capital_cap_inr)
         self.pair_ledger = PairLedger()
         self.risk_guard = build_risk_guard(self.config)
@@ -55,7 +66,7 @@ class PlatformRuntime:
         self.regime_service = RegimeService(config=self.config.strategies.regime)
         db_path = live.storage.sqlite_path
         if not db_path.is_absolute():
-            db_path = _project_root() / db_path
+            db_path = self._project_root / db_path
         self.database = PlatformDatabase(db_path)
         self.orchestrator = StrategyOrchestrator(
             config=self.config,
@@ -68,6 +79,7 @@ class PlatformRuntime:
             database=self.database,
         )
         self.state.capital = self.capital_allocator.buckets_snapshot()
+        self.state.phase = "1"
         self._restore_persisted_events()
 
     def _restore_persisted_events(self) -> None:
@@ -111,15 +123,63 @@ class PlatformRuntime:
         self.feed_task = asyncio.create_task(self._run_feed())
 
     async def _run_feed(self) -> None:
-        feed_cfg = self.config.strategies.feed
-        feed = SimulatedQuoteFeed(symbols=feed_cfg.symbols, interval_seconds=feed_cfg.interval_seconds)
+        build = build_quote_feed(self.config, project_root=self._project_root)
+        self._init_feed_health(build)
+        self.state.source = build.source
         self.state.connected = True
-        self.state.append_event(event("feed", f"Feed started ({feed_cfg.source})", "info"))
-        async for quote in feed.stream():
-            snapshot = self.indicator_service.update(quote)
-            regime = self.regime_service.classify(snapshot)
-            self.orchestrator.process_quote(quote, snapshot, regime)
-            await self._broadcast_state()
+        message = f"Feed started ({build.source})"
+        if build.warning:
+            message = f"{message} — {build.warning}"
+            self.state.append_event(event("feed", message, "warning"))
+            if self.database:
+                self.database.append_event(category="feed", message=message, severity="warning")
+        else:
+            self.state.append_event(event("feed", message, "info"))
+
+        async for quote in build.feed.stream():
+            await self._handle_quote(quote)
+
+    def _init_feed_health(self, build: FeedBuildResult) -> None:
+        self.feed_health = FeedHealth(
+            source=build.source,
+            connected=True,
+            subscribed_symbols=build.subscribed_symbols,
+            last_tick_at=None,
+        )
+
+    async def _handle_quote(self, quote: LiveQuote) -> None:
+        self.feed_health.last_tick_at = datetime.now(tz=timezone.utc)
+        self.feed_health.connected = True
+        self.state.connected = True
+
+        closed_bar = self.bar_aggregator.update(quote)
+        snapshot = self.indicator_service.update(quote)
+        if closed_bar is not None:
+            snapshot = self.indicator_service.update(_bar_as_quote(closed_bar))
+
+        regime = self.regime_service.classify(snapshot)
+        self.orchestrator.process_quote(quote, snapshot, regime)
+        self.state.bars = self.bar_aggregator.bars_snapshot()
+        self.state.feed_health = self.feed_health.snapshot(
+            quotes=self.state.quotes,
+            max_stale_ms=self.config.live.risk.max_quote_stale_ms,
+        )
+        self._enforce_stale_feed_guard()
+        await self._broadcast_state()
+
+    def _enforce_stale_feed_guard(self) -> None:
+        health = self.state.feed_health
+        if not health.get("is_stale"):
+            return
+        if not self.config.live.risk.kill_switch_on_stale_quotes:
+            return
+        if self.risk_guard.kill_switch:
+            return
+        self.risk_guard.kill_switch = True
+        self.state.controls.kill_switch = True
+        self.state.controls.last_risk_reject = "stale_quote_feed"
+        stale = ", ".join(health.get("stale_symbols", []))
+        self.state.append_event(event("risk", f"Kill switch: stale quotes ({stale})", "danger"))
 
     async def _broadcast_state(self) -> None:
         if not self.subscribers:
@@ -132,6 +192,19 @@ class PlatformRuntime:
             except RuntimeError:
                 stale.add(websocket)
         self.subscribers.difference_update(stale)
+
+
+def _bar_as_quote(bar: OhlcvBar) -> LiveQuote:
+    return LiveQuote(
+        timestamp=bar.closed_at,
+        symbol=bar.symbol,
+        ltp=bar.close,
+        open=bar.open,
+        high=bar.high,
+        low=bar.low,
+        close=bar.close,
+        volume=bar.volume,
+    )
 
 
 def _project_root() -> Path:

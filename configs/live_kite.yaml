@@ -7,7 +7,10 @@ config_dir: configs
 
 broker:
   provider: zerodha
-  websocket_enabled: false
+  websocket_enabled: true
+  api_key_env: KITE_API_KEY
+  access_token_env: KITE_ACCESS_TOKEN
+  api_secret_env: KITE_API_SECRET
   instrument_cache_dir: data/raw/kite
   subscription_mode: quote
   reconnect_seconds: 5.0
@@ -24,4 +27,3 @@ storage:
   sqlite_path: data/vhe_platform.db
   persist_events: true
   persist_fills: true
-

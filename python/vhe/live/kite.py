@@ -5,6 +5,16 @@ from io import StringIO
 
 import pandas as pd
 
+from vhe.live.kite_ws import KiteWebSocketFeed
+
+__all__ = [
+    "KiteFeedConfig",
+    "KiteInstrument",
+    "KiteWebSocketFeed",
+    "nse_equity_token_map",
+    "parse_instruments_csv",
+]
+
 
 @dataclass(frozen=True, slots=True)
 class KiteFeedConfig:
@@ -25,16 +35,6 @@ class KiteInstrument:
     segment: str
     tick_size: float
     lot_size: int
-
-
-class KiteWebSocketFeed:
-    """Placeholder for the real Kite binary WebSocket parser."""
-
-    def __init__(self, config: KiteFeedConfig) -> None:
-        self.config = config
-
-    async def stream(self):
-        raise NotImplementedError("Kite feed requires binary packet parsing and auth wiring")
 
 
 def parse_instruments_csv(csv_payload: str) -> list[KiteInstrument]:
