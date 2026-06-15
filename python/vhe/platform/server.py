@@ -8,10 +8,13 @@ from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from vhe.backtest.models import Order, OrderSide, OrderType
+from vhe.config.env import load_env_file
 from vhe.platform.events import event
 from vhe.platform.runtime import PlatformRuntime
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+load_env_file()
 
 app = FastAPI(title="Volatility Harvesting Engine")
 runtime = PlatformRuntime.from_project_root()

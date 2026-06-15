@@ -49,21 +49,43 @@ BSE symbols are also available through Kite if you subscribe to BSE instrument t
 
 Access tokens expire at **~6 AM IST** each day. You must refresh daily.
 
+### Option A: `.env` file (recommended)
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env`:
+
+```env
+KITE_API_KEY=your_api_key
+KITE_API_SECRET=your_api_secret
+KITE_ACCESS_TOKEN=your_daily_access_token
+VHE_LIVE_CONFIG=live_kite.yaml
+```
+
+VHE loads `.env` automatically when you start the server or run `vhe` CLI commands.
+
+### Option B: export in terminal
+
 ```bash
 export KITE_API_KEY="your_api_key"
 export KITE_API_SECRET="your_api_secret"
+```
 
+Then get today's access token:
+
+```bash
 # Print login URL, open in browser, login with Zerodha credentials
 vhe kite-login-url
 
 # After redirect, copy request_token from URL (?request_token=...)
 vhe kite-exchange-token --request-token YOUR_REQUEST_TOKEN
 
-# Export the printed access token:
-export KITE_ACCESS_TOKEN="the_access_token"
+# Put printed token in .env as KITE_ACCESS_TOKEN=...
 ```
 
-Add these to your shell profile or a local `.env` file (never commit secrets).
+Never commit `.env` — it is gitignored.
 
 ---
 
@@ -91,8 +113,9 @@ vhe kite-token-map --date 2026-06-15 --cache-dir data/raw/kite
 
 2. Start the platform with Kite live config:
    ```bash
-   export VHE_LIVE_CONFIG=live_kite.yaml
-   uvicorn vhe.platform.server:app --reload --app-dir python
+   # In .env: VHE_LIVE_CONFIG=live_kite.yaml
+   source .venv/bin/activate
+   uvicorn vhe.platform.server:app --host 127.0.0.1 --port 8765 --app-dir python
    ```
 
 3. Open the dashboard — **Feed Health** should show `KITE` during market hours (09:15–15:30 IST).

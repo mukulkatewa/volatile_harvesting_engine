@@ -4,6 +4,7 @@ import argparse
 from datetime import date
 from pathlib import Path
 
+from vhe.config.env import load_env_file
 from vhe.config.models import AppConfig
 from vhe.data.panel import load_history_from_parquet_dir
 from vhe.data.service import ingest_nse_bhavcopy
@@ -79,6 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    load_env_file()
     parser = build_parser()
     args = parser.parse_args()
     config = AppConfig.from_yaml(args.config)
