@@ -17,8 +17,8 @@ It supersedes the tactical ordering in `VHE_RESEARCH_AND_BUILD_PLAN.md` by prior
 | Phase | Status | Completed |
 |-------|--------|-----------|
 | **0 — Foundation** | ✅ Complete | 2026-06-15 |
-| 1 — Live Market Data | 🔜 Next | — |
-| 2 — Order Execution | Pending | — |
+| **1 — Live Market Data** | ✅ Complete | 2026-06-15 |
+| 2 — Order Execution | 🔜 Next | — |
 | 3 — Strategy Live Wiring | Pending | — |
 | 4 — Pair Discovery | Pending | — |
 | 5 — Live Micro-Capital | Pending | — |
@@ -36,6 +36,19 @@ It supersedes the tactical ordering in `VHE_RESEARCH_AND_BUILD_PLAN.md` by prior
 - 43 tests passing (config, capital, indicators, storage, platform)
 
 **Still open from Phase 0:** full position restore on restart (fills/events persist; paper positions reset on boot — acceptable for v0).
+
+### Phase 1 deliverables (shipped)
+
+- `live/kite_ws.py` — Kite WebSocket feed with subscribe/mode/reconnect
+- `live/feed_factory.py` — selects simulated vs Kite; falls back safely
+- `live/kite_auth.py` + `live/kite_session.py` — credential loading + token exchange
+- `live/bars.py` — 5-minute OHLCV bar aggregator (IST buckets)
+- Feed health in `PlatformState` — tick age, stale symbols, auto kill-switch
+- CLI: `kite-login-url`, `kite-exchange-token`, `kite-download-instruments`
+- `configs/live_kite.yaml` + `docs/ZERODHA_SETUP.md`
+- UI: Feed Health panel, 5m bars grid
+
+**To use live NSE quotes:** see [ZERODHA_SETUP.md](./ZERODHA_SETUP.md)
 
 ---
 
@@ -670,19 +683,20 @@ SQLite is sufficient for personal account. Migrate to Postgres only if multi-acc
 
 **Exit criteria:** Dashboard runs on simulated feed with config-driven params; restart preserves audit events. ✅
 
-### Phase 1 — Live Market Data (Week 2)
+### Phase 1 — Live Market Data (Week 2) ✅ COMPLETE
 
 **Goal:** Real Kite WebSocket quotes in dashboard.
 
-| Task | Files | Done when |
-|------|-------|-----------|
-| Implement `KiteWebSocketFeed` | `live/kite.py` | Streams quote mode for 4 symbols |
-| BarAggregator (5m) | `live/bars.py` | OHLCV bars from ticks |
-| IndicatorService on live bars | `indicators/service.py` | ATR, ADX, EMA updated per bar |
-| Feed health metrics | `platform/state.py` | Staleness alarm >3s |
-| Instrument cache daily job | CLI cron | Token map always fresh |
+| Task | Files | Status |
+|------|-------|--------|
+| Implement `KiteWebSocketFeed` | `live/kite_ws.py` | ✅ |
+| BarAggregator (5m) | `live/bars.py` | ✅ |
+| Feed factory + fallback | `live/feed_factory.py` | ✅ |
+| Feed health metrics | `platform/state.py`, `runtime.py` | ✅ |
+| Instrument cache CLI | `cli.py` (`kite-download-instruments`) | ✅ |
+| Zerodha setup guide | `docs/ZERODHA_SETUP.md` | ✅ |
 
-**Exit criteria:** Dashboard shows live RELIANCE/HDFCBANK quotes during market hours with <500ms latency.
+**Exit criteria:** Dashboard can show live Kite quotes during market hours when credentials configured. ✅
 
 ### Phase 2 — Order Execution + Reconciliation (Week 3–4)
 

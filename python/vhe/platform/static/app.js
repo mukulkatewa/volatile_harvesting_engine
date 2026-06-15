@@ -61,6 +61,8 @@ function render(payload) {
   setPnl("unrealized-pnl", portfolio.unrealized_pnl || 0);
   renderRisk(payload.controls || {});
   renderCapital(payload.capital || {});
+  renderFeedHealth(payload.feed_health || {}, payload.source);
+  renderBars(payload.bars || {});
   renderTicker(payload.quotes || {}, payload.regimes || {});
   renderQuotes(payload.quotes || {}, payload.regimes || {}, payload.indicators || {});
   renderStrategies(payload.plans || {}, payload.momentum_plans || {}, payload.regimes || {});
@@ -96,6 +98,50 @@ function setPnl(id, value) {
   target.textContent = money.format(value);
   target.classList.toggle("buy", value >= 0);
   target.classList.toggle("sell", value < 0);
+}
+
+function renderFeedHealth(health, source) {
+  const label = document.getElementById("feed-source-label");
+  const tickAge = document.getElementById("feed-tick-age");
+  const staleLabel = document.getElementById("feed-stale-label");
+  const feedSource = health.source || source || "—";
+  label.textContent = feedSource.toUpperCase();
+  label.className = `feed-source ${feedSource === "kite" ? "buy" : "stale"}`;
+  const age = health.last_tick_age_ms;
+  tickAge.textContent = age == null ? "—" : `${age}ms`;
+  tickAge.className = age != null && age > 3000 ? "sell" : "buy";
+  const stale = health.stale_symbols || [];
+  if (health.is_stale) {
+    staleLabel.textContent = stale.length ? `Stale: ${stale.join(", ")}` : "Feed stale";
+    staleLabel.className = "sell";
+  } else {
+    staleLabel.textContent = "All symbols fresh";
+    staleLabel.className = "muted";
+  }
+}
+
+function renderBars(bars) {
+  const target = document.getElementById("bars-grid");
+  const symbols = Object.keys(bars).sort();
+  if (symbols.length === 0) {
+    target.innerHTML = `<div class="empty-state"><span>Building bars from live ticks…</span></div>`;
+    return;
+  }
+  target.innerHTML = symbols
+    .map((symbol) => {
+      const bar = bars[symbol];
+      return `
+        <article class="strategy-card">
+          <div class="strategy-head"><strong>${symbol}</strong><span class="muted">${bar.interval_minutes}m</span></div>
+          <div class="strategy-meta">
+            <div><span>O / H</span><strong>${fmt.format(bar.open)} / ${fmt.format(bar.high)}</strong></div>
+            <div><span>L / C</span><strong>${fmt.format(bar.low)} / ${fmt.format(bar.close)}</strong></div>
+            <div><span>Volume</span><strong>${fmt.format(bar.volume)}</strong></div>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
 }
 
 function renderCapital(capital) {

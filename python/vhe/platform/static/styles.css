@@ -213,10 +213,30 @@ body::before {
 
 .hero-metrics {
   display: grid;
-  grid-template-columns: 1.4fr 0.7fr 1.2fr;
+  grid-template-columns: 1.4fr 0.7fr 0.9fr;
   gap: 14px;
   margin-bottom: 14px;
 }
+
+.capital-section {
+  margin-bottom: 14px;
+}
+
+.capital-card.full-width {
+  width: 100%;
+}
+
+.bars-section {
+  margin-bottom: 14px;
+}
+
+.feed-source {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.feed-health-sub em.buy { color: var(--green); }
+.feed-health-sub em.sell { color: var(--red); }
 
 .metric-card {
   padding: 18px;

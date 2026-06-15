@@ -67,10 +67,28 @@
             <strong id="risk-label" class="risk-pill">Clear</strong>
             <div class="metric-sub muted">Pre-trade guard active</div>
           </article>
-          <article class="metric-card capital-card">
+          <article class="metric-card">
+            <span>Feed Health</span>
+            <strong id="feed-source-label" class="feed-source">—</strong>
+            <div class="metric-sub feed-health-sub">
+              <span>Tick age <em id="feed-tick-age">—</em></span>
+              <span id="feed-stale-label" class="muted">All symbols fresh</span>
+            </div>
+          </article>
+        </section>
+
+        <section class="capital-section reveal">
+          <article class="metric-card capital-card full-width">
             <span>Capital Buckets</span>
             <div id="capital-bars" class="capital-bars"></div>
           </article>
+        </section>
+
+        <section class="bars-section reveal" id="bars-section">
+          <div class="card full">
+            <div class="card-head"><h2>5-Minute Bars</h2><span>Intraday aggregation</span></div>
+            <div id="bars-grid" class="strategy-grid"></div>
+          </div>
         </section>
 
         <section class="ticker-strip" id="ticker"></section>
