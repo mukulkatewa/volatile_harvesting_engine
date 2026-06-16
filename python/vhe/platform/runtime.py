@@ -149,26 +149,30 @@ class PlatformRuntime:
             self.state.append_event(event("feed", f"Feed stopped: {exc}", "danger"))
 
     async def _run_feed(self) -> None:
-        build = build_quote_feed(self.config, project_root=self._project_root)
-        self._init_feed_health(build)
-        self.state.source = build.source
-        self.state.connected = True
-        message = f"Feed started ({build.source})"
-        if build.warning:
-            message = f"{message} — {build.warning}"
-            self.state.append_event(event("feed", message, "warning"))
-            if self.database:
-                self.database.append_event(category="feed", message=message, severity="warning")
-        else:
-            self.state.append_event(event("feed", message, "info"))
+        reconnect_seconds = self.config.live.broker.reconnect_seconds
+        while True:
+            try:
+                build = build_quote_feed(self.config, project_root=self._project_root)
+                self._init_feed_health(build)
+                self.state.source = build.source
+                self.state.connected = True
+                message = f"Feed started ({build.source})"
+                if build.warning:
+                    message = f"{message} — {build.warning}"
+                    self.state.append_event(event("feed", message, "warning"))
+                    if self.database:
+                        self.database.append_event(category="feed", message=message, severity="warning")
+                else:
+                    self.state.append_event(event("feed", message, "info"))
 
-        try:
-            async for quote in build.feed.stream():
-                await self._handle_quote(quote)
-        except Exception as exc:
-            self.state.connected = False
-            self.state.append_event(event("feed", f"Feed crashed: {exc}", "danger"))
-            raise
+                async for quote in build.feed.stream():
+                    await self._handle_quote(quote)
+            except Exception as exc:
+                self.state.connected = False
+                if hasattr(self, "feed_health"):
+                    self.feed_health.connected = False
+                self.state.append_event(event("feed", f"Feed crashed: {exc}", "danger"))
+                await asyncio.sleep(reconnect_seconds)
 
     def _init_feed_health(self, build: FeedBuildResult) -> None:
         self.feed_health = FeedHealth(

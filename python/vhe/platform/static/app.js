@@ -25,13 +25,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   document.querySelectorAll(".nav-item").forEach((button) => {
-    button.addEventListener("click", () => {
-      const panel = button.dataset.panel;
-      document.querySelectorAll(".nav-item").forEach((el) => el.classList.toggle("active", el === button));
-      document.querySelectorAll(".panels .panel").forEach((el) => {
-        el.classList.toggle("active", el.dataset.panel === panel);
-      });
-    });
+    button.addEventListener("click", () => switchView(button.dataset.panel));
   });
 
   tickClock();
@@ -99,8 +93,19 @@ function render(payload) {
   renderEvents(payload.events || []);
 }
 
+function switchView(viewId) {
+  if (!viewId) return;
+  document.querySelectorAll(".nav-item").forEach((el) => {
+    el.classList.toggle("active", el.dataset.panel === viewId);
+  });
+  document.querySelectorAll(".view").forEach((el) => {
+    el.classList.toggle("active", el.dataset.view === viewId);
+  });
+}
+
 async function pollState() {
-  if (wsOpen) return;
+  const quoteCount = document.getElementById("quotes-body")?.children.length || 0;
+  if (wsOpen && quoteCount > 0) return;
   try {
     const response = await fetch("/api/state");
     if (response.ok) scheduleRender(await response.json());

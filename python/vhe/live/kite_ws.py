@@ -82,7 +82,7 @@ class KiteWebSocketFeed(LiveFeed):
             logger.debug("kite websocket message: %s", body)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class FeedHealth:
     source: str
     connected: bool
@@ -95,18 +95,21 @@ class FeedHealth:
         now = datetime.now(tz=timezone.utc)
         stale_symbols: list[str] = []
         symbol_age_ms: dict[str, int] = {}
+        last_tick_age_ms = None
+        if self.last_tick_at is not None:
+            last_tick_age_ms = max(int((now - self.last_tick_at).total_seconds() * 1000), 0)
+        warming_up = last_tick_age_ms is not None and last_tick_age_ms <= max_stale_ms
         for symbol in self.subscribed_symbols:
             quote = quotes.get(symbol)
             if quote is None:
+                if warming_up:
+                    continue
                 stale_symbols.append(symbol)
                 continue
             age_ms = max(int((now - quote.timestamp).total_seconds() * 1000), 0)
             symbol_age_ms[symbol] = age_ms
             if age_ms > max_stale_ms:
                 stale_symbols.append(symbol)
-        last_tick_age_ms = None
-        if self.last_tick_at is not None:
-            last_tick_age_ms = max(int((now - self.last_tick_at).total_seconds() * 1000), 0)
         return {
             "source": self.source,
             "connected": self.connected,

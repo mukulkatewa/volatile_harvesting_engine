@@ -60,7 +60,8 @@ body::before {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  z-index: 2;
+  z-index: 10;
+  pointer-events: auto;
 }
 
 .brand {
@@ -95,6 +96,8 @@ body::before {
   font: 600 13px var(--sans);
   cursor: pointer;
   transition: background 180ms ease, color 180ms ease, border-color 180ms ease, transform 180ms ease;
+  position: relative;
+  z-index: 3;
 }
 
 .nav-item:hover {
@@ -441,6 +444,15 @@ body::before {
 
 .panels .panel { display: none; animation: rise 320ms ease both; }
 .panels .panel.active { display: block; }
+
+.view {
+  display: none;
+  animation: rise 320ms ease both;
+}
+
+.view.active {
+  display: block;
+}
 
 .panel-grid {
   display: grid;

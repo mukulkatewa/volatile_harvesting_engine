@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/styles.css?v=4" />
+    <link rel="stylesheet" href="/static/styles.css?v=6" />
   </head>
   <body>
     <div class="app">
@@ -20,10 +20,10 @@
           </div>
         </div>
         <nav class="nav">
-          <button class="nav-item active" data-panel="terminal">Terminal</button>
-          <button class="nav-item" data-panel="strategies">Strategies</button>
-          <button class="nav-item" data-panel="execution">Execution</button>
-          <button class="nav-item" data-panel="activity">Activity</button>
+          <button type="button" class="nav-item active" data-panel="terminal">Terminal</button>
+          <button type="button" class="nav-item" data-panel="strategies">Strategies</button>
+          <button type="button" class="nav-item" data-panel="execution">Execution</button>
+          <button type="button" class="nav-item" data-panel="activity">Activity</button>
         </nav>
         <div class="sidebar-meta">
           <div class="meta-row"><span>Phase</span><strong id="phase-label">0</strong></div>
@@ -45,122 +45,120 @@
             </div>
           </div>
           <div class="header-actions">
-            <button id="pause-button" class="ctrl-btn" title="Pause">Pause</button>
-            <button id="resume-button" class="ctrl-btn primary" title="Resume">Resume</button>
-            <button id="demo-fill-button" class="ctrl-btn" title="Demo fill">Demo</button>
-            <button id="reset-paper-button" class="ctrl-btn" title="Reset paper">Reset</button>
-            <button id="kill-button" class="ctrl-btn danger" title="Kill switch">Kill</button>
+            <button type="button" id="pause-button" class="ctrl-btn" title="Pause">Pause</button>
+            <button type="button" id="resume-button" class="ctrl-btn primary" title="Resume">Resume</button>
+            <button type="button" id="demo-fill-button" class="ctrl-btn" title="Demo fill">Demo</button>
+            <button type="button" id="reset-paper-button" class="ctrl-btn" title="Reset paper">Reset</button>
+            <button type="button" id="kill-button" class="ctrl-btn danger" title="Kill switch">Kill</button>
           </div>
         </header>
 
-        <section class="hero-metrics">
-          <article class="metric-card hero-equity">
-            <span>Portfolio Equity</span>
-            <strong id="equity">—</strong>
-            <div class="metric-sub">
-              <span>Cash <em id="cash">—</em></span>
-              <span class="pnl-wrap">Unrealized <em id="unrealized-pnl">—</em></span>
-            </div>
-          </article>
-          <article class="metric-card">
-            <span>Risk State</span>
-            <strong id="risk-label" class="risk-pill">Clear</strong>
-            <div class="metric-sub muted">Pre-trade guard active</div>
-          </article>
-          <article class="metric-card">
-            <span>Feed Health</span>
-            <strong id="feed-source-label" class="feed-source">—</strong>
-            <div class="metric-sub feed-health-sub">
-              <span>Tick age <em id="feed-tick-age">—</em></span>
-              <span id="feed-stale-label" class="muted">All symbols fresh</span>
-            </div>
-          </article>
-        </section>
+        <section class="view active" data-view="terminal">
+          <div class="hero-metrics">
+            <article class="metric-card hero-equity">
+              <span>Portfolio Equity</span>
+              <strong id="equity">—</strong>
+              <div class="metric-sub">
+                <span>Cash <em id="cash">—</em></span>
+                <span class="pnl-wrap">Unrealized <em id="unrealized-pnl">—</em></span>
+              </div>
+            </article>
+            <article class="metric-card">
+              <span>Risk State</span>
+              <strong id="risk-label" class="risk-pill">Clear</strong>
+              <div class="metric-sub muted">Pre-trade guard active</div>
+            </article>
+            <article class="metric-card">
+              <span>Feed Health</span>
+              <strong id="feed-source-label" class="feed-source">—</strong>
+              <div class="metric-sub feed-health-sub">
+                <span>Tick age <em id="feed-tick-age">—</em></span>
+                <span id="feed-stale-label" class="muted">All symbols fresh</span>
+              </div>
+            </article>
+          </div>
 
-        <section class="capital-section reveal">
-          <article class="metric-card capital-card full-width">
-            <div class="capital-head">
-              <span>Capital Buckets</span>
-              <strong id="capital-total">—</strong>
+          <section class="capital-section">
+            <article class="metric-card capital-card full-width">
+              <div class="capital-head">
+                <span>Capital Buckets</span>
+                <strong id="capital-total">—</strong>
+              </div>
+              <div id="capital-bars" class="capital-bars"></div>
+            </article>
+          </section>
+
+          <section class="edge-section">
+            <article class="metric-card edge-card full-width">
+              <span>Active Edge</span>
+              <p id="edge-note" class="edge-note">Waiting for market regime…</p>
+              <div id="strategy-status" class="strategy-status"></div>
+            </article>
+          </section>
+
+          <section class="bars-section" id="bars-section">
+            <div class="card full">
+              <div class="card-head"><h2>5-Minute Bars</h2><span>Intraday aggregation</span></div>
+              <div id="bars-grid" class="strategy-grid"></div>
             </div>
-            <div id="capital-bars" class="capital-bars"></div>
-          </article>
-        </section>
+          </section>
 
-        <section class="edge-section reveal">
-          <article class="metric-card edge-card full-width">
-            <span>Active Edge</span>
-            <p id="edge-note" class="edge-note">Waiting for market regime…</p>
-            <div id="strategy-status" class="strategy-status"></div>
-          </article>
-        </section>
+          <section class="ticker-strip" id="ticker"></section>
 
-        <section class="bars-section reveal" id="bars-section">
-          <div class="card full">
-            <div class="card-head"><h2>5-Minute Bars</h2><span>Intraday aggregation</span></div>
-            <div id="bars-grid" class="strategy-grid"></div>
+          <div class="panel-grid">
+            <div class="card">
+              <div class="card-head"><h2>Market Feed</h2><span>Live quotes</span></div>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead><tr><th>Symbol</th><th>LTP</th><th>Regime</th><th>ADX</th><th>Spread</th><th>Age</th></tr></thead>
+                  <tbody id="quotes-body"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-head"><h2>Positions</h2><span>MTM</span></div>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead><tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>LTP</th><th>PnL</th></tr></thead>
+                  <tbody id="positions-body"></tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </section>
 
-        <section class="ticker-strip" id="ticker"></section>
+        <section class="view" data-view="strategies">
+          <div class="card full">
+            <div class="card-head"><h2>Strategy Stack</h2><span>Grid · Momentum · Pair</span></div>
+            <div id="strategy-plans" class="strategy-grid"></div>
+          </div>
+          <div class="card full">
+            <div class="card-head"><h2>Pair Spread Monitor</h2><span>Z-score engine</span></div>
+            <div id="pair-plans" class="strategy-grid"></div>
+          </div>
+        </section>
 
-        <div class="panels">
-          <section class="panel terminal-panel active" data-panel="terminal">
-            <div class="panel-grid">
-              <div class="card">
-                <div class="card-head"><h2>Market Feed</h2><span>Live quotes</span></div>
-                <div class="table-wrap">
-                  <table class="data-table">
-                    <thead><tr><th>Symbol</th><th>LTP</th><th>Regime</th><th>ADX</th><th>Spread</th><th>Age</th></tr></thead>
-                    <tbody id="quotes-body"></tbody>
-                  </table>
-                </div>
-              </div>
-              <div class="card">
-                <div class="card-head"><h2>Positions</h2><span>MTM</span></div>
-                <div class="table-wrap">
-                  <table class="data-table">
-                    <thead><tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>LTP</th><th>PnL</th></tr></thead>
-                    <tbody id="positions-body"></tbody>
-                  </table>
-                </div>
-              </div>
+        <section class="view" data-view="execution">
+          <div class="panel-grid">
+            <div class="card">
+              <div class="card-head"><h2>Execution Tape</h2><span>Paper fills</span></div>
+              <div id="fills" class="tape empty-state"><span>No fills yet</span></div>
             </div>
-          </section>
+            <div class="card">
+              <div class="card-head"><h2>Pair Ledger</h2><span>Multi-leg cycles</span></div>
+              <div id="pair-trades" class="tape empty-state"><span>No pair trades yet</span></div>
+            </div>
+          </div>
+        </section>
 
-          <section class="panel strategies-panel" data-panel="strategies">
-            <div class="card full">
-              <div class="card-head"><h2>Strategy Stack</h2><span>Grid · Momentum · Pair</span></div>
-              <div id="strategy-plans" class="strategy-grid"></div>
-            </div>
-            <div class="card full">
-              <div class="card-head"><h2>Pair Spread Monitor</h2><span>Z-score engine</span></div>
-              <div id="pair-plans" class="strategy-grid"></div>
-            </div>
-          </section>
-
-          <section class="panel execution-panel" data-panel="execution">
-            <div class="panel-grid">
-              <div class="card">
-                <div class="card-head"><h2>Execution Tape</h2><span>Paper fills</span></div>
-                <div id="fills" class="tape empty-state"><span>No fills yet</span></div>
-              </div>
-              <div class="card">
-                <div class="card-head"><h2>Pair Ledger</h2><span>Multi-leg cycles</span></div>
-                <div id="pair-trades" class="tape empty-state"><span>No pair trades yet</span></div>
-              </div>
-            </div>
-          </section>
-
-          <section class="panel activity-panel" data-panel="activity">
-            <div class="card full">
-              <div class="card-head"><h2>Activity Stream</h2><span>Controls · risk · fills</span></div>
-              <div id="events" class="activity-stream empty-state"><span>No events yet</span></div>
-            </div>
-          </section>
-        </div>
+        <section class="view" data-view="activity">
+          <div class="card full">
+            <div class="card-head"><h2>Activity Stream</h2><span>Controls · risk · fills</span></div>
+            <div id="events" class="activity-stream empty-state"><span>No events yet</span></div>
+          </div>
+        </section>
       </main>
     </div>
-    <script src="/static/app.js?v=5"></script>
+    <script src="/static/app.js?v=6"></script>
   </body>
 </html>
