@@ -180,6 +180,12 @@ function renderBars(bars) {
     .join("");
 }
 
+function bucketMoney(amount) {
+  const value = amount || 0;
+  if (value >= 1000) return `₹${(value / 1000).toFixed(1)}K`;
+  return money.format(value);
+}
+
 function renderCapital(capital) {
   const target = document.getElementById("capital-bars");
   const totalLabel = document.getElementById("capital-total");
@@ -210,7 +216,7 @@ function renderCapital(capital) {
         <div class="capital-row">
           <label>${label}</label>
           <div class="bar-track"><div class="bar-fill ${cls}" style="width:${Math.round((pct || 0) * 100)}%"></div></div>
-          <strong title="${money.format(amount || 0)}">${moneyCompact.format(amount || 0)}</strong>
+          <strong title="${money.format(amount || 0)}">${bucketMoney(amount)}</strong>
         </div>
       `,
     )
