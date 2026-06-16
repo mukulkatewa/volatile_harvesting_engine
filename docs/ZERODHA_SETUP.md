@@ -87,6 +87,8 @@ vhe kite-exchange-token --request-token YOUR_REQUEST_TOKEN
 
 Never commit `.env` — it is gitignored.
 
+**"Connection refused" after login is normal.** Zerodha redirects to `http://127.0.0.1/?request_token=...` — nothing needs to listen on port 80. Copy `request_token` from the browser address bar (even if the page errors), then run `vhe kite-exchange-token`.
+
 ---
 
 ## Step 3 — Cache instrument master (daily, before market open)

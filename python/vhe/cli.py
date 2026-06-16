@@ -144,7 +144,12 @@ def main() -> None:
     if args.command == "kite-exchange-token":
         broker = BrokerConfig()
         credentials = load_kite_exchange_credentials(broker)
-        session = KiteSessionClient(credentials).exchange_request_token(args.request_token)
+        try:
+            session = KiteSessionClient(credentials).exchange_request_token(args.request_token)
+        except RuntimeError as exc:
+            print(str(exc))
+            print("Request tokens expire in a few minutes. Run: vhe kite-login-url → login again → copy new request_token from the URL.")
+            raise SystemExit(1) from exc
         print(f"access_token={session.access_token}")
         print(f"user_id={session.user_id}")
         print(f"login_time={session.login_time}")
