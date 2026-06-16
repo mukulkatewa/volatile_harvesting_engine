@@ -3,15 +3,20 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from vhe.live.feed import LiveFeed
+from vhe.live.market_session import MarketSessionConfig, session_phase
 from vhe.live.models import LiveQuote, MarketDepthLevel
 
 logger = logging.getLogger(__name__)
 
 MIN_POLL_SECONDS = 10.0
+CLOSED_MARKET_POLL_SECONDS = 60.0
+FETCH_TIMEOUT_SECONDS = 12.0
+_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="yfinance")
 
 
 def to_yfinance_symbol(symbol: str) -> str:
@@ -27,28 +32,40 @@ def from_yfinance_symbol(ticker: str) -> str:
     return ticker
 
 
-def fetch_yfinance_quotes(symbols: list[str]) -> list[LiveQuote]:
-    import yfinance as yf
-
-    yf_symbols = [to_yfinance_symbol(symbol) for symbol in symbols]
-    tickers = yf.Tickers(" ".join(yf_symbols))
+def fetch_yfinance_quotes(
+    symbols: list[str],
+    *,
+    session: MarketSessionConfig | None = None,
+    timeout_seconds: float = FETCH_TIMEOUT_SECONDS,
+) -> list[LiveQuote]:
     now = datetime.now(tz=timezone.utc)
+    phase = session_phase(session) if session is not None else None
     quotes: list[LiveQuote] = []
 
     for symbol in symbols:
-        yf_symbol = to_yfinance_symbol(symbol)
-        ticker = tickers.tickers.get(yf_symbol)
-        if ticker is None:
-            logger.warning("yfinance missing ticker for %s", yf_symbol)
-            continue
         try:
-            quote = _quote_from_ticker(symbol, ticker, now)
+            future = _executor.submit(_fetch_single_quote, symbol, now)
+            quote = future.result(timeout=timeout_seconds)
+        except FuturesTimeoutError:
+            logger.warning("yfinance quote timed out for %s", symbol)
+            continue
         except Exception as exc:
             logger.warning("yfinance quote failed for %s: %s", symbol, exc)
             continue
         if quote is not None:
             quotes.append(quote)
+
+    if not quotes and phase is not None:
+        logger.info("yfinance returned no quotes during %s", phase.value)
     return quotes
+
+
+def _fetch_single_quote(symbol: str, timestamp: datetime) -> LiveQuote | None:
+    import yfinance as yf
+
+    yf_symbol = to_yfinance_symbol(symbol)
+    ticker = yf.Ticker(yf_symbol)
+    return _quote_from_ticker(symbol, ticker, timestamp)
 
 
 def _quote_from_ticker(symbol: str, ticker: object, timestamp: datetime) -> LiveQuote | None:
@@ -127,15 +144,25 @@ def _build_quote(
 class YFinanceQuoteFeed(LiveFeed):
     symbols: list[str]
     interval_seconds: float = 15.0
+    session: MarketSessionConfig | None = None
 
     async def stream(self) -> AsyncIterator[LiveQuote]:
-        poll_seconds = max(self.interval_seconds, MIN_POLL_SECONDS)
         while True:
+            phase = session_phase(self.session) if self.session is not None else None
+            poll_seconds = max(self.interval_seconds, MIN_POLL_SECONDS)
+            if phase is not None and phase.value != "open":
+                poll_seconds = max(poll_seconds, CLOSED_MARKET_POLL_SECONDS)
+
             try:
-                quotes = await asyncio.to_thread(fetch_yfinance_quotes, self.symbols)
+                quotes = await asyncio.to_thread(
+                    fetch_yfinance_quotes,
+                    self.symbols,
+                    session=self.session,
+                )
             except Exception as exc:
                 logger.exception("yfinance batch fetch failed: %s", exc)
                 quotes = []
+
             for quote in quotes:
                 yield quote
             await asyncio.sleep(poll_seconds)

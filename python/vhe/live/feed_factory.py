@@ -7,6 +7,7 @@ from pathlib import Path
 
 from vhe.config.loader import PlatformConfig
 from vhe.live.feed import LiveFeed, SimulatedQuoteFeed
+from vhe.live.market_session import MarketSessionConfig
 from vhe.live.yfinance_feed import YFinanceQuoteFeed
 from vhe.live.kite import nse_equity_token_map
 from vhe.live.kite_auth import KiteCredentialError, load_kite_credentials
@@ -37,8 +38,9 @@ def build_quote_feed(config: PlatformConfig, *, project_root: Path, trading_date
 
     if feed_cfg.source == "yfinance":
         interval = max(feed_cfg.interval_seconds, 10.0)
+        session = _market_session_config(config)
         return FeedBuildResult(
-            feed=YFinanceQuoteFeed(symbols=list(symbols), interval_seconds=interval),
+            feed=YFinanceQuoteFeed(symbols=list(symbols), interval_seconds=interval, session=session),
             source="yfinance",
             subscribed_symbols=symbols,
             warning="yfinance quotes are delayed ~15 minutes during market hours",
@@ -120,3 +122,16 @@ def build_quote_feed(config: PlatformConfig, *, project_root: Path, trading_date
         source="kite",
         subscribed_symbols=symbols,
     )
+
+
+def _market_session_config(config: PlatformConfig) -> MarketSessionConfig:
+    app = config.app
+    if app is not None:
+        market = app.market
+        return MarketSessionConfig.from_strings(
+            timezone=market.timezone,
+            session_start=market.session_start,
+            session_end=market.session_end,
+            force_exit_time=config.live.force_exit_time,
+        )
+    return MarketSessionConfig.from_strings(force_exit_time=config.live.force_exit_time)

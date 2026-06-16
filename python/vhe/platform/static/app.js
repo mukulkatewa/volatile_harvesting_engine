@@ -9,6 +9,8 @@ let wsOpen = false;
 let pendingPayload = null;
 let renderFrame = null;
 let lastCapitalKey = "";
+let lastServerTimeMs = null;
+let lastPayload = null;
 
 const controls = [
   ["pause-button", "/api/control/pause"],
@@ -33,6 +35,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   tickClock();
   setInterval(tickClock, 1000);
+  setInterval(tickQuoteAges, 1000);
   connect();
   setInterval(pollState, 3000);
 });
@@ -71,6 +74,10 @@ function connect() {
 }
 
 function render(payload) {
+  lastPayload = payload;
+  if (payload.server_time) {
+    lastServerTimeMs = Date.parse(payload.server_time);
+  }
   const portfolio = payload.portfolio || {};
   const capitalTotal = payload.capital?.total;
   renderConnection(payload.connected);
@@ -85,6 +92,7 @@ function render(payload) {
   renderCapital(payload.capital || {});
   renderStrategyStatus(payload.strategy_status || {});
   renderFeedHealth(payload.feed_health || {}, payload.source);
+  renderMarketSession(payload.market_session || {});
   renderBars(payload.bars || {});
   renderTicker(payload.quotes || {}, payload.regimes || {});
   renderQuotes(payload.quotes || {}, payload.regimes || {}, payload.indicators || {});
@@ -152,6 +160,9 @@ function renderRisk(controls, portfolio = {}) {
   } else if (exposurePct >= maxExposurePct - 0.5) {
     text = "At Cap";
     klass = "stale";
+  } else if (reject === "symbol_exposure_limit" && exposurePct < maxExposurePct * 0.85) {
+    text = exposurePct >= maxExposurePct * 0.65 ? "Deploying" : "Clear";
+    klass = exposurePct >= maxExposurePct * 0.65 ? "buy" : "buy";
   } else if (reject && reject !== "gross_exposure_limit") {
     text = RISK_LABELS[reject] || "Guarded";
     klass = "stale";
@@ -169,8 +180,50 @@ function renderRisk(controls, portfolio = {}) {
 }
 
 function renderConnection(connected) {
+  const phase = lastPayload?.market_session?.phase;
+  const closed = phase === "closed" || phase === "pre_market";
   document.getElementById("connection-dot").classList.toggle("live", connected);
-  document.getElementById("connection-label").textContent = connected ? "Live Feed" : "Disconnected";
+  if (connected && closed) {
+    document.getElementById("connection-label").textContent = "Feed On (Market Closed)";
+  } else {
+    document.getElementById("connection-label").textContent = connected ? "Live Feed" : "Disconnected";
+  }
+}
+
+function renderMarketSession(session) {
+  const badge = document.getElementById("session-badge");
+  if (!badge) return;
+  const phase = session.phase || "open";
+  const labels = {
+    open: "SESSION OPEN",
+    force_exit: "SQUARE-OFF",
+    closed: "MARKET CLOSED",
+    pre_market: "PRE-MARKET",
+  };
+  badge.textContent = labels[phase] || phase.toUpperCase();
+  badge.className = `session-badge ${phase}`;
+}
+
+function staleThresholdMs(source, health) {
+  if (health?.market_closed) return 120_000;
+  if (source === "yfinance") return 30_000;
+  return 3_000;
+}
+
+function tickQuoteAges() {
+  if (!lastPayload?.quotes || lastServerTimeMs === null) return;
+  const drift = Date.now() - lastServerTimeMs;
+  const source = lastPayload.source;
+  const threshold = staleThresholdMs(source, lastPayload.feed_health);
+  for (const quote of Object.values(lastPayload.quotes)) {
+    const row = quoteRows.get(quote.symbol);
+    if (!row) continue;
+    const ageMs = Math.max(0, (quote.age_ms || 0) + drift);
+    const ageEl = row.querySelector(".age");
+    if (!ageEl) continue;
+    ageEl.textContent = `${ageMs}ms`;
+    ageEl.className = `mono age ${ageMs > threshold ? "stale" : ""}`;
+  }
 }
 
 function setPnl(id, value) {
@@ -187,19 +240,26 @@ function renderFeedHealth(health, source) {
   const feedSource = source || health.source || "—";
   const online = feedSource === "kite" && health.connected !== false;
   const delayed = feedSource === "yfinance" && health.connected !== false;
-  label.textContent = online
-    ? feedSource.toUpperCase()
-    : delayed
-      ? "YFINANCE (~15M DELAY)"
-      : feedSource === "kite"
-        ? "KITE OFFLINE"
-        : feedSource.toUpperCase();
-  label.className = `feed-source ${online || delayed ? "buy" : feedSource === "kite" ? "stale" : "stale"}`;
+  const closed = health.market_closed;
+  label.textContent = closed
+    ? "CLOSED — LAST CLOSE"
+    : online
+      ? feedSource.toUpperCase()
+      : delayed
+        ? "YFINANCE (~15M DELAY)"
+        : feedSource === "kite"
+          ? "KITE OFFLINE"
+          : feedSource.toUpperCase();
+  label.className = `feed-source ${closed ? "stale" : online || delayed ? "buy" : "stale"}`;
   const age = health.last_tick_age_ms;
+  const threshold = staleThresholdMs(feedSource, health);
   tickAge.textContent = age == null ? "—" : `${age}ms`;
-  tickAge.className = age != null && age > 3000 ? "sell" : "buy";
+  tickAge.className = age != null && age > threshold ? "sell" : "buy";
   const stale = health.stale_symbols || [];
-  if (health.is_stale) {
+  if (closed) {
+    staleLabel.textContent = "Session closed — prices are last available";
+    staleLabel.className = "muted";
+  } else if (health.is_stale) {
     staleLabel.textContent = stale.length ? `Stale: ${stale.join(", ")}` : "Feed stale";
     staleLabel.className = "sell";
   } else {
@@ -350,7 +410,8 @@ function renderQuotes(quotes, regimes, indicators) {
 
     const regime = regimes[quote.symbol] || "UNKNOWN";
     const adx = indicators[quote.symbol]?.adx_14;
-    const ageClass = quote.age_ms > 2000 ? "stale" : "";
+    const threshold = staleThresholdMs(lastPayload?.source, lastPayload?.feed_health);
+    const ageClass = quote.age_ms > threshold ? "stale" : "";
 
     row.querySelector(".sym").textContent = quote.symbol;
     row.querySelector(".ltp").textContent = fmt.format(quote.ltp);

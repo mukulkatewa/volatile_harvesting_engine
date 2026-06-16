@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, time
 
 from vhe.backtest.models import Order, OrderSide, OrderType
 from vhe.live.models import LiveQuote
@@ -18,6 +18,7 @@ class DynamicGridConfig:
     fill_tolerance_pct: float = 0.0
     seed_deploy_pct: float = 0.0
     level_capital_multiplier: float = 1.0
+    force_exit_time: time | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +93,22 @@ class DynamicGridStrategy:
         )
 
     def orders_from_plan(self, plan: DynamicGridPlan, quote: LiveQuote, *, current_quantity: int = 0) -> list[Order]:
+        if (
+            self.config.force_exit_time is not None
+            and _quote_local_time(quote) >= self.config.force_exit_time
+            and current_quantity > 0
+        ):
+            return [
+                self._order(
+                    quote.timestamp,
+                    quote.symbol,
+                    OrderSide.SELL,
+                    quote.ltp,
+                    current_quantity,
+                    "dynamic_grid_force_exit",
+                )
+            ]
+
         orders: list[Order] = []
         level_capital = (self.config.symbol_capital / self.config.max_levels) * self.config.level_capital_multiplier
         tolerance = 1.0 + self.config.fill_tolerance_pct
@@ -158,3 +175,12 @@ class DynamicGridStrategy:
             created_at=timestamp,
             reason=reason,
         )
+
+
+def _quote_local_time(quote: LiveQuote) -> time:
+    ts = quote.timestamp
+    if ts.tzinfo is None:
+        return ts.time()
+    from zoneinfo import ZoneInfo
+
+    return ts.astimezone(ZoneInfo("Asia/Kolkata")).time()

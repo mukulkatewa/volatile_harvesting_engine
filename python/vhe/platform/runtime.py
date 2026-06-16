@@ -13,6 +13,7 @@ from vhe.execution.paper import PaperBroker
 from vhe.execution.reconciler import Reconciler
 from vhe.live.bars import BarAggregator, OhlcvBar
 from vhe.live.feed_factory import FeedBuildResult, build_quote_feed
+from vhe.live.market_session import MarketSessionConfig, SessionPhase, session_phase
 from vhe.live.kite_ws import FeedHealth
 from vhe.live.models import LiveQuote
 from vhe.platform.events import event
@@ -40,8 +41,11 @@ class PlatformRuntime:
     database: PlatformDatabase | None = field(init=False)
     feed_health: FeedHealth = field(init=False)
     feed_task: asyncio.Task | None = None
+    heartbeat_task: asyncio.Task | None = None
     subscribers: set = field(default_factory=set)
     _project_root: Path = field(default_factory=lambda: _project_root())
+    _market_session: MarketSessionConfig = field(init=False)
+    _last_session_phase: SessionPhase | None = None
 
     @classmethod
     def from_project_root(cls, project_root: Path | None = None, live_config_name: str | None = None) -> PlatformRuntime:
@@ -93,6 +97,7 @@ class PlatformRuntime:
         self.state.portfolio = self.execution.snapshot_portfolio({})
         self.state.feed_health = {"source": self.config.strategies.feed.source, "connected": False}
         self.state.phase = "2"
+        self._market_session = _market_session_from_config(self.config)
         self._restore_persisted_events()
 
     def _build_paper_broker(self, initial_cash: float) -> PaperBroker:
@@ -163,6 +168,8 @@ class PlatformRuntime:
             return
         self.feed_task = asyncio.create_task(self._run_feed(), name="vhe-feed")
         self.feed_task.add_done_callback(self._feed_task_done)
+        if self.heartbeat_task is None or self.heartbeat_task.done():
+            self.heartbeat_task = asyncio.create_task(self._heartbeat_loop(), name="vhe-heartbeat")
 
     def _feed_task_done(self, task: asyncio.Task) -> None:
         if task.cancelled():
@@ -217,19 +224,68 @@ class PlatformRuntime:
             snapshot = self.indicator_service.update(_bar_as_quote(closed_bar))
 
         regime = self.regime_service.classify(snapshot)
-        self.orchestrator.process_quote(quote, snapshot, regime)
+        phase = session_phase(self._market_session)
+        self._on_session_phase_change(phase)
+        self.orchestrator.process_quote(quote, snapshot, regime, session_phase=phase)
         self.state.bars = self.bar_aggregator.bars_snapshot()
+        market_closed = phase in {SessionPhase.CLOSED, SessionPhase.PRE_MARKET}
         self.state.feed_health = self.feed_health.snapshot(
             quotes=self.state.quotes,
             max_stale_ms=self.config.live.risk.max_quote_stale_ms,
+            market_closed=market_closed,
         )
+        self.state.market_session = {
+            "phase": phase.value,
+            "timezone": self._market_session.timezone,
+            "session_start": self._market_session.session_start.isoformat(timespec="minutes"),
+            "session_end": self._market_session.session_end.isoformat(timespec="minutes"),
+            "force_exit_time": self._market_session.force_exit_time.isoformat(timespec="minutes"),
+        }
         if self.config.live.mode == "live":
             self.state.reconciliation = self.reconciler.sync()
         self._enforce_stale_feed_guard()
         await self._broadcast_state()
 
+    def _on_session_phase_change(self, phase: SessionPhase) -> None:
+        if phase == self._last_session_phase:
+            return
+        previous = self._last_session_phase
+        self._last_session_phase = phase
+        if phase == SessionPhase.CLOSED and previous not in {None, SessionPhase.CLOSED}:
+            self.state.append_event(event("session", "NSE cash session closed — monitoring only", "info"))
+        elif phase == SessionPhase.OPEN and previous in {SessionPhase.PRE_MARKET, SessionPhase.CLOSED, None}:
+            self.state.append_event(event("session", "NSE session open — automation active", "info"))
+        elif phase == SessionPhase.FORCE_EXIT and previous == SessionPhase.OPEN:
+            self.state.append_event(event("session", "Force exit window — squaring intraday positions", "warning"))
+
+    async def _heartbeat_loop(self) -> None:
+        while True:
+            await asyncio.sleep(1.0)
+            if not hasattr(self, "feed_health"):
+                continue
+            phase = session_phase(self._market_session)
+            self._on_session_phase_change(phase)
+            market_closed = phase in {SessionPhase.CLOSED, SessionPhase.PRE_MARKET}
+            self.state.market_session = {
+                "phase": phase.value,
+                "timezone": self._market_session.timezone,
+                "session_start": self._market_session.session_start.isoformat(timespec="minutes"),
+                "session_end": self._market_session.session_end.isoformat(timespec="minutes"),
+                "force_exit_time": self._market_session.force_exit_time.isoformat(timespec="minutes"),
+            }
+            if hasattr(self, "feed_health"):
+                self.state.feed_health = self.feed_health.snapshot(
+                    quotes=self.state.quotes,
+                    max_stale_ms=self.config.live.risk.max_quote_stale_ms,
+                    market_closed=market_closed,
+                )
+            self._enforce_stale_feed_guard()
+            await self._broadcast_state()
+
     def _enforce_stale_feed_guard(self) -> None:
         health = self.state.feed_health
+        if health.get("market_closed"):
+            return
         if not health.get("is_stale"):
             return
         if not self.config.live.risk.kill_switch_on_stale_quotes:
@@ -274,3 +330,9 @@ def _project_root() -> Path:
         if (parent / "configs" / "live_paper.yaml").exists():
             return parent
     return Path.cwd()
+
+
+def _market_session_from_config(config: PlatformConfig) -> MarketSessionConfig:
+    from vhe.live.feed_factory import _market_session_config
+
+    return _market_session_config(config)

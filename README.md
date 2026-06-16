@@ -146,7 +146,9 @@ See [`docs/HOW_WE_MAKE_MONEY.md`](docs/HOW_WE_MAKE_MONEY.md) for full quant deta
 | **Momentum** | TREND_UP | Continuation when grid is off |
 | **Cash** | CRASH / kill switch | No new risk |
 
-**Automatic execution:** Keep the server running during market hours (09:25–14:45 IST). The engine places paper orders when regime + price conditions are met. No button clicks needed except optional Reset/Demo.
+**Automatic execution:** Keep the server running during market hours (09:15–15:10 IST). The engine places paper orders when regime + price conditions are met. No button clicks needed except optional Reset/Demo.
+
+**After market close (15:30 IST):** The feed stays on but switches to **monitoring mode** — no new orders, last available yfinance prices shown, dashboard shows **MARKET CLOSED**. Force square-off runs from **15:10** (`force_exit_time` in live config).
 
 **Pair spread calibration:** `pair.mean` and `pair.std` must match the log-spread `log(RELIANCE) - log(HDFCBANK)`. Old values (`mean: -0.04`, `std: 0.006`) produced z≈94 and permanent STOP. Current values are calibrated from 6 months of daily NSE closes (~`mean: 0.5001`, `std: 0.0656`).
 

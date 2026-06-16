@@ -91,7 +91,13 @@ class FeedHealth:
     reconnect_count: int = 0
     last_error: str | None = None
 
-    def snapshot(self, *, quotes: dict[str, LiveQuote], max_stale_ms: int) -> dict[str, Any]:
+    def snapshot(
+        self,
+        *,
+        quotes: dict[str, LiveQuote],
+        max_stale_ms: int,
+        market_closed: bool = False,
+    ) -> dict[str, Any]:
         now = datetime.now(tz=timezone.utc)
         stale_symbols: list[str] = []
         symbol_age_ms: dict[str, int] = {}
@@ -99,6 +105,7 @@ class FeedHealth:
         if self.last_tick_at is not None:
             last_tick_age_ms = max(int((now - self.last_tick_at).total_seconds() * 1000), 0)
         warming_up = last_tick_age_ms is not None and last_tick_age_ms <= max_stale_ms
+        effective_stale_ms = max_stale_ms if not market_closed else max(max_stale_ms, 3_600_000)
         for symbol in self.subscribed_symbols:
             quote = quotes.get(symbol)
             if quote is None:
@@ -108,8 +115,9 @@ class FeedHealth:
                 continue
             age_ms = max(int((now - quote.timestamp).total_seconds() * 1000), 0)
             symbol_age_ms[symbol] = age_ms
-            if age_ms > max_stale_ms:
+            if not market_closed and age_ms > effective_stale_ms:
                 stale_symbols.append(symbol)
+        tick_stale = last_tick_age_ms is not None and last_tick_age_ms > effective_stale_ms
         return {
             "source": self.source,
             "connected": self.connected,
@@ -120,5 +128,6 @@ class FeedHealth:
             "last_error": self.last_error,
             "stale_symbols": stale_symbols,
             "symbol_age_ms": symbol_age_ms,
-            "is_stale": bool(stale_symbols) or (last_tick_age_ms is not None and last_tick_age_ms > max_stale_ms),
+            "is_stale": bool(stale_symbols) or tick_stale,
+            "market_closed": market_closed,
         }
