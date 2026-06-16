@@ -91,6 +91,21 @@ Never commit `.env` — it is gitignored.
 
 ---
 
+## Free tier (no ₹500/month Connect)
+
+Zerodha **Kite Personal** is free but **does not include live quotes or WebSocket** (you will see HTTP 403 on the ticker). That is expected.
+
+| What | Free option |
+|------|-------------|
+| Test strategies + UI | `VHE_LIVE_CONFIG=live_free.yaml` + `feed.source: simulated` in `configs/strategies.yaml` |
+| End-of-day NSE data | `vhe data-ingest-nse --date YYYY-MM-DD` (bhavcopy, free) |
+| Paper PnL / grid / pairs | Simulated tick feed — runs 24/7, no Zerodha data fees |
+| Real orders later | Keep daily `KITE_ACCESS_TOKEN`; set `live_live.yaml` when ready — orders work on Personal, prices still need simulated or paid Connect |
+
+**When to pay for Connect:** only when you want **real intraday NSE prices** streaming into the engine (~₹500/month). Until then, validate logic on simulated feed + bhavcopy backtests.
+
+---
+
 ## Step 3 — Cache instrument master (daily, before market open)
 
 Kite WebSocket subscribes by numeric `instrument_token`, not symbol name.

@@ -37,6 +37,6 @@ feed:
     - TMPV
     - BEL
   interval_seconds: 0.75
-  source: kite
+  source: simulated
   bar_interval_minutes: 5
   fallback_to_simulated: true

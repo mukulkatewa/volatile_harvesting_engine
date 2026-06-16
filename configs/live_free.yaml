@@ -1,0 +1,31 @@
+# Free tier: simulated market data + paper trading.
+# Use Kite Personal API token only when you switch to live orders (no live quotes on free plan).
+mode: paper
+capital_cap_inr: 25000
+max_symbols: 2
+max_grid_levels: 5
+force_exit_time: "15:10"
+config_dir: configs
+
+broker:
+  provider: zerodha
+  websocket_enabled: false
+  api_key_env: KITE_API_KEY
+  access_token_env: KITE_ACCESS_TOKEN
+  api_secret_env: KITE_API_SECRET
+  instrument_cache_dir: data/raw/kite
+  subscription_mode: quote
+  reconnect_seconds: 5.0
+
+risk:
+  reserve_capital_pct: 0.10
+  max_daily_loss_pct: 0.01
+  max_gross_exposure_pct: 0.75
+  max_single_symbol_qty: 100
+  kill_switch_on_stale_quotes: true
+  max_quote_stale_ms: 3000
+
+storage:
+  sqlite_path: data/vhe_platform.db
+  persist_events: true
+  persist_fills: true
