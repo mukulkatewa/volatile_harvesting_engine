@@ -1,7 +1,13 @@
 import pytest
 
 from vhe.config.loader import BrokerConfig
-from vhe.live.kite_auth import KiteCredentialError, kite_login_url, load_kite_credentials
+from vhe.live.kite_auth import (
+    KiteCredentialError,
+    kite_login_url,
+    load_kite_api_key,
+    load_kite_credentials,
+    load_kite_exchange_credentials,
+)
 
 
 def test_kite_login_url() -> None:
@@ -15,6 +21,20 @@ def test_load_kite_credentials_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("KITE_ACCESS_TOKEN", raising=False)
     with pytest.raises(KiteCredentialError):
         load_kite_credentials(BrokerConfig())
+
+
+def test_load_kite_api_key_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KITE_API_KEY", "key")
+    assert load_kite_api_key(BrokerConfig()) == "key"
+
+
+def test_load_kite_exchange_credentials_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KITE_API_KEY", "key")
+    monkeypatch.setenv("KITE_API_SECRET", "secret")
+    creds = load_kite_exchange_credentials(BrokerConfig())
+    assert creds.api_key == "key"
+    assert creds.api_secret == "secret"
+    assert creds.access_token == ""
 
 
 def test_load_kite_credentials_success(monkeypatch: pytest.MonkeyPatch) -> None:

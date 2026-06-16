@@ -9,7 +9,7 @@ from vhe.config.models import AppConfig
 from vhe.data.panel import load_history_from_parquet_dir
 from vhe.data.service import ingest_nse_bhavcopy
 from vhe.live.kite import nse_equity_token_map
-from vhe.live.kite_auth import kite_login_url, load_kite_credentials
+from vhe.live.kite_auth import kite_login_url, load_kite_api_key, load_kite_credentials, load_kite_exchange_credentials
 from vhe.live.kite_instruments import KiteAuth, KiteInstrumentClient, cache_instruments_csv, load_cached_instruments
 from vhe.live.kite_session import KiteSessionClient
 from vhe.config.loader import BrokerConfig
@@ -135,15 +135,15 @@ def main() -> None:
 
     if args.command == "kite-login-url":
         broker = BrokerConfig()
-        credentials = load_kite_credentials(broker)
-        print(kite_login_url(credentials.api_key, redirect_url=args.redirect_url))
+        api_key = load_kite_api_key(broker)
+        print(kite_login_url(api_key, redirect_url=args.redirect_url))
         print("After login, copy request_token from the redirect URL and run:")
         print("  vhe kite-exchange-token --request-token <token>")
         return
 
     if args.command == "kite-exchange-token":
         broker = BrokerConfig()
-        credentials = load_kite_credentials(broker)
+        credentials = load_kite_exchange_credentials(broker)
         session = KiteSessionClient(credentials).exchange_request_token(args.request_token)
         print(f"access_token={session.access_token}")
         print(f"user_id={session.user_id}")
