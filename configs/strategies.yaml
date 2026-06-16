@@ -34,7 +34,7 @@ feed:
   symbols:
     - RELIANCE
     - HDFCBANK
-    - TATAMOTORS
+    - TMPV
     - BEL
   interval_seconds: 0.75
   source: kite
