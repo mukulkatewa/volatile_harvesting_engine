@@ -140,9 +140,10 @@ function renderFeedHealth(health, source) {
   const label = document.getElementById("feed-source-label");
   const tickAge = document.getElementById("feed-tick-age");
   const staleLabel = document.getElementById("feed-stale-label");
-  const feedSource = health.source || source || "—";
-  label.textContent = feedSource.toUpperCase();
-  label.className = `feed-source ${feedSource === "kite" ? "buy" : "stale"}`;
+  const feedSource = source || health.source || "—";
+  const online = feedSource === "kite" && health.connected !== false;
+  label.textContent = online ? feedSource.toUpperCase() : feedSource === "kite" ? "KITE OFFLINE" : feedSource.toUpperCase();
+  label.className = `feed-source ${online ? "buy" : feedSource === "kite" ? "stale" : "stale"}`;
   const age = health.last_tick_age_ms;
   tickAge.textContent = age == null ? "—" : `${age}ms`;
   tickAge.className = age != null && age > 3000 ? "sell" : "buy";
