@@ -1,7 +1,14 @@
 const fmt = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
 const money = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 const moneyCompact = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", notation: "compact", maximumFractionDigits: 1 });
+
 const seenPrices = new Map();
+const quoteRows = new Map();
+const tickerChips = new Map();
+let wsOpen = false;
+let pendingPayload = null;
+let renderFrame = null;
+let lastCapitalKey = "";
 
 const controls = [
   ["pause-button", "/api/control/pause"],
@@ -30,8 +37,18 @@ document.addEventListener("DOMContentLoaded", () => {
   tickClock();
   setInterval(tickClock, 1000);
   connect();
-  setInterval(pollState, 1500);
+  setInterval(pollState, 3000);
 });
+
+function scheduleRender(payload) {
+  pendingPayload = payload;
+  if (renderFrame !== null) return;
+  renderFrame = requestAnimationFrame(() => {
+    renderFrame = null;
+    if (pendingPayload) render(pendingPayload);
+    pendingPayload = null;
+  });
+}
 
 function tickClock() {
   const now = new Date();
@@ -44,9 +61,13 @@ function connect() {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const socket = new WebSocket(`${protocol}://${window.location.host}/ws/state`);
 
-  socket.onopen = () => renderConnection(true);
-  socket.onmessage = (event) => render(JSON.parse(event.data));
+  socket.onopen = () => {
+    wsOpen = true;
+    renderConnection(true);
+  };
+  socket.onmessage = (event) => scheduleRender(JSON.parse(event.data));
   socket.onclose = () => {
+    wsOpen = false;
     renderConnection(false);
     setTimeout(connect, 1200);
   };
@@ -79,9 +100,10 @@ function render(payload) {
 }
 
 async function pollState() {
+  if (wsOpen) return;
   try {
     const response = await fetch("/api/state");
-    if (response.ok) render(await response.json());
+    if (response.ok) scheduleRender(await response.json());
   } catch {
     // ignore transient network errors
   }
@@ -89,7 +111,7 @@ async function pollState() {
 
 async function postControl(endpoint) {
   const response = await fetch(endpoint, { method: "POST" });
-  if (response.ok) render(await response.json());
+  if (response.ok) scheduleRender(await response.json());
 }
 
 function renderRisk(controls) {
@@ -162,10 +184,19 @@ function renderCapital(capital) {
   const target = document.getElementById("capital-bars");
   const totalLabel = document.getElementById("capital-total");
   if (!capital.total) {
-    target.innerHTML = `<div class="muted">Loading buckets…</div>`;
+    if (lastCapitalKey !== "loading") {
+      target.innerHTML = `<div class="muted">Loading buckets…</div>`;
+      lastCapitalKey = "loading";
+    }
     if (totalLabel) totalLabel.textContent = "—";
     return;
   }
+  const key = JSON.stringify(capital);
+  if (key === lastCapitalKey) {
+    if (totalLabel) totalLabel.textContent = money.format(capital.total);
+    return;
+  }
+  lastCapitalKey = key;
   if (totalLabel) totalLabel.textContent = money.format(capital.total);
   const rows = [
     ["grid", "Grid", capital.grid, capital.grid_pct],
@@ -186,6 +217,104 @@ function renderCapital(capital) {
     .join("");
 }
 
+function flashRow(row, direction) {
+  if (!direction) return;
+  row.classList.remove("flash-up", "flash-down");
+  row.classList.add(direction);
+}
+
+function renderTicker(quotes, regimes) {
+  const container = document.getElementById("ticker");
+  const items = Object.values(quotes).sort((a, b) => a.symbol.localeCompare(b.symbol));
+  const active = new Set();
+
+  for (const quote of items) {
+    active.add(quote.symbol);
+    let chip = tickerChips.get(quote.symbol);
+    if (!chip) {
+      chip = document.createElement("div");
+      chip.className = "ticker-chip";
+      chip.innerHTML = `
+        <div><strong class="sym"></strong><div class="muted regime" style="font-size:10px;margin-top:4px"></div></div>
+        <span class="ltp"></span>
+      `;
+      container.appendChild(chip);
+      tickerChips.set(quote.symbol, chip);
+    }
+
+    const previous = seenPrices.get(quote.symbol);
+    const direction = previous === undefined ? "" : quote.ltp > previous ? "up" : quote.ltp < previous ? "down" : "";
+    seenPrices.set(quote.symbol, quote.ltp);
+
+    chip.querySelector(".sym").textContent = quote.symbol;
+    chip.querySelector(".regime").textContent = regimes[quote.symbol] || "—";
+    chip.querySelector(".ltp").textContent = fmt.format(quote.ltp);
+    chip.classList.remove("up", "down");
+    if (direction) chip.classList.add(direction);
+  }
+
+  for (const [symbol, chip] of tickerChips) {
+    if (!active.has(symbol)) {
+      chip.remove();
+      tickerChips.delete(symbol);
+      seenPrices.delete(symbol);
+    }
+  }
+}
+
+function renderQuotes(quotes, regimes, indicators) {
+  const tbody = document.getElementById("quotes-body");
+  const items = Object.values(quotes).sort((a, b) => a.symbol.localeCompare(b.symbol));
+  const active = new Set();
+
+  for (const quote of items) {
+    active.add(quote.symbol);
+    let row = quoteRows.get(quote.symbol);
+    if (!row) {
+      row = document.createElement("tr");
+      row.innerHTML = `
+        <td><strong class="sym"></strong></td>
+        <td class="mono ltp"></td>
+        <td><span class="regime-pill regime"></span></td>
+        <td class="mono adx"></td>
+        <td class="mono spread"></td>
+        <td class="mono age"></td>
+      `;
+      tbody.appendChild(row);
+      quoteRows.set(quote.symbol, row);
+    }
+
+    const previous = seenPrices.get(`table-${quote.symbol}`);
+    if (previous !== undefined && quote.ltp !== previous) {
+      flashRow(row, quote.ltp > previous ? "flash-up" : "flash-down");
+    }
+    seenPrices.set(`table-${quote.symbol}`, quote.ltp);
+
+    const regime = regimes[quote.symbol] || "UNKNOWN";
+    const adx = indicators[quote.symbol]?.adx_14;
+    const ageClass = quote.age_ms > 2000 ? "stale" : "";
+
+    row.querySelector(".sym").textContent = quote.symbol;
+    row.querySelector(".ltp").textContent = fmt.format(quote.ltp);
+    const regimeEl = row.querySelector(".regime");
+    regimeEl.textContent = regime;
+    regimeEl.className = `regime-pill regime ${regime}`;
+    row.querySelector(".adx").textContent = typeof adx === "number" ? fmt.format(adx) : "—";
+    row.querySelector(".spread").textContent = quote.spread_bps === null ? "—" : fmt.format(quote.spread_bps);
+    const ageEl = row.querySelector(".age");
+    ageEl.textContent = `${quote.age_ms}ms`;
+    ageEl.className = `mono age ${ageClass}`;
+  }
+
+  for (const [symbol, row] of quoteRows) {
+    if (!active.has(symbol)) {
+      row.remove();
+      quoteRows.delete(symbol);
+      seenPrices.delete(`table-${symbol}`);
+    }
+  }
+}
+
 function renderStrategyStatus(status) {
   const note = document.getElementById("edge-note");
   const chips = document.getElementById("strategy-status");
@@ -199,48 +328,6 @@ function renderStrategyStatus(status) {
   ];
   chips.innerHTML = items
     .map(([label, value, cls]) => `<span class="status-chip ${cls}">${label}: ${value}</span>`)
-    .join("");
-}
-
-function renderTicker(quotes, regimes) {
-  document.getElementById("ticker").innerHTML = Object.values(quotes)
-    .sort((a, b) => a.symbol.localeCompare(b.symbol))
-    .map((quote) => {
-      const previous = seenPrices.get(quote.symbol);
-      const direction = previous === undefined ? "" : quote.ltp > previous ? "up" : quote.ltp < previous ? "down" : "";
-      seenPrices.set(quote.symbol, quote.ltp);
-      const regime = regimes[quote.symbol] || "—";
-      return `
-        <div class="ticker-chip ${direction}">
-          <div><strong>${quote.symbol}</strong><div class="muted" style="font-size:10px;margin-top:4px">${regime}</div></div>
-          <span>${fmt.format(quote.ltp)}</span>
-        </div>
-      `;
-    })
-    .join("");
-}
-
-function renderQuotes(quotes, regimes, indicators) {
-  document.getElementById("quotes-body").innerHTML = Object.values(quotes)
-    .sort((a, b) => a.symbol.localeCompare(b.symbol))
-    .map((quote) => {
-      const previous = seenPrices.get(`table-${quote.symbol}`);
-      const flash = previous === undefined ? "" : quote.ltp > previous ? "flash-up" : quote.ltp < previous ? "flash-down" : "";
-      seenPrices.set(`table-${quote.symbol}`, quote.ltp);
-      const regime = regimes[quote.symbol] || "UNKNOWN";
-      const adx = indicators[quote.symbol]?.adx_14 ?? "—";
-      const ageClass = quote.age_ms > 2000 ? "stale" : "";
-      return `
-        <tr class="${flash}">
-          <td><strong>${quote.symbol}</strong></td>
-          <td class="mono">${fmt.format(quote.ltp)}</td>
-          <td><span class="regime-pill ${regime}">${regime}</span></td>
-          <td class="mono">${typeof adx === "number" ? fmt.format(adx) : adx}</td>
-          <td>${quote.spread_bps === null ? "—" : fmt.format(quote.spread_bps)}</td>
-          <td class="${ageClass} mono">${quote.age_ms}ms</td>
-        </tr>
-      `;
-    })
     .join("");
 }
 

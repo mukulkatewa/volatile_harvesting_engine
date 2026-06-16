@@ -461,8 +461,9 @@ body::before {
 }
 
 .data-table tbody tr { transition: background 180ms ease; }
-.data-table tbody tr.flash-up { animation: flash-up 520ms ease; }
-.data-table tbody tr.flash-down { animation: flash-down 520ms ease; }
+.data-table tbody tr { transition: background-color 280ms ease; }
+.data-table tbody tr.flash-up { background: rgba(0, 208, 156, 0.12); }
+.data-table tbody tr.flash-down { background: rgba(255, 107, 107, 0.12); }
 
 .regime-pill {
   display: inline-flex;

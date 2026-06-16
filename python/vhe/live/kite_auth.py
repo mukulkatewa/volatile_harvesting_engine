@@ -22,11 +22,11 @@ def load_kite_credentials(broker: BrokerConfig) -> KiteCredentials:
     access_token = os.environ.get(broker.access_token_env, "").strip()
     api_secret = os.environ.get(broker.api_secret_env, "").strip() or None
 
-    if not api_key or not access_token:
+    if not api_key or not access_token or access_token == "your_access_token_here":
         missing = []
         if not api_key:
             missing.append(broker.api_key_env)
-        if not access_token:
+        if not access_token or access_token == "your_access_token_here":
             missing.append(broker.access_token_env)
         raise KiteCredentialError(f"Missing Kite credentials: {', '.join(missing)}")
 
