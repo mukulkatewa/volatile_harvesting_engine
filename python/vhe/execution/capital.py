@@ -36,6 +36,7 @@ class CapitalAllocator:
     buckets: CapitalBucketConfig
     max_symbols: int = 2
     max_grid_levels: int = 5
+    max_symbol_deploy_pct: float = 0.10
 
     def compute_buckets(self) -> CapitalBuckets:
         reserve = self.total_capital * self.buckets.reserve_bucket_pct
@@ -55,7 +56,7 @@ class CapitalAllocator:
     def symbol_grid_allocation(self, symbol: str, *, active_symbol_count: int | None = None) -> SymbolAllocation:
         bucket = self.compute_buckets()
         count = max(active_symbol_count or self.max_symbols, 1)
-        per_symbol_cap = min(bucket.grid / count, bucket.deployable * 0.10)
+        per_symbol_cap = min(bucket.grid / count, bucket.deployable * self.max_symbol_deploy_pct)
         level_capital = per_symbol_cap / self.max_grid_levels
         return SymbolAllocation(
             symbol=symbol,

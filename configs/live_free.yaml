@@ -1,8 +1,8 @@
-# Free tier: simulated market data + paper trading.
+# Free tier: simulated market data + aggressive paper trading for strategy validation.
 # Use Kite Personal API token only when you switch to live orders (no live quotes on free plan).
 mode: paper
-capital_cap_inr: 25000
-max_symbols: 2
+capital_cap_inr: 75000
+max_symbols: 5
 max_grid_levels: 5
 force_exit_time: "15:10"
 config_dir: configs
@@ -17,13 +17,20 @@ broker:
   subscription_mode: quote
   reconnect_seconds: 5.0
 
+paper:
+  aggressive_fills: true
+  limit_tolerance_bps: 35
+  fill_full_quantity: true
+
 risk:
   reserve_capital_pct: 0.10
-  max_daily_loss_pct: 0.01
-  max_gross_exposure_pct: 0.75
-  max_single_symbol_qty: 100
+  max_daily_loss_pct: 0.03
+  max_gross_exposure_pct: 0.92
+  max_single_symbol_qty: 500
+  max_symbol_deploy_pct: 0.40
+  max_symbol_exposure_pct: 0.28
   kill_switch_on_stale_quotes: true
-  max_quote_stale_ms: 120000
+  max_quote_stale_ms: 180000
 
 storage:
   sqlite_path: data/vhe_platform.db

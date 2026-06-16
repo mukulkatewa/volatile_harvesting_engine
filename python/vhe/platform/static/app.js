@@ -25,7 +25,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   document.querySelectorAll(".nav-item").forEach((button) => {
-    button.addEventListener("click", () => switchView(button.dataset.panel));
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      switchView(button.dataset.panel);
+    });
   });
 
   tickClock();
@@ -78,7 +81,7 @@ function render(payload) {
   document.getElementById("equity").textContent = money.format(equity);
   document.getElementById("cash").textContent = money.format(portfolio.cash ?? capitalTotal ?? 0);
   setPnl("unrealized-pnl", portfolio.unrealized_pnl || 0);
-  renderRisk(payload.controls || {});
+  renderRisk(payload.controls || {}, portfolio);
   renderCapital(payload.capital || {});
   renderStrategyStatus(payload.strategy_status || {});
   renderFeedHealth(payload.feed_health || {}, payload.source);
@@ -88,7 +91,7 @@ function render(payload) {
   renderStrategies(payload.plans || {}, payload.momentum_plans || {}, payload.regimes || {});
   renderPairs(payload.pair_plans || {});
   renderPairTrades(payload.pair_trades || []);
-  renderFills(payload.fills || []);
+  renderFills(payload.fills?.length ? payload.fills : payload.portfolio?.fills || []);
   renderPositions(portfolio.positions || []);
   renderEvents(payload.events || []);
 }
@@ -101,6 +104,7 @@ function switchView(viewId) {
   document.querySelectorAll(".view").forEach((el) => {
     el.classList.toggle("active", el.dataset.view === viewId);
   });
+  document.querySelector(".main")?.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 async function pollState() {
@@ -119,14 +123,49 @@ async function postControl(endpoint) {
   if (response.ok) scheduleRender(await response.json());
 }
 
-function renderRisk(controls) {
+const RISK_LABELS = {
+  gross_exposure_limit: "At Cap",
+  symbol_exposure_limit: "Symbol Cap",
+  daily_loss_limit: "Loss Limit",
+  symbol_quantity_limit: "Qty Limit",
+  kill_switch_active: "Killed",
+  automation_paused: "Paused",
+};
+
+function renderRisk(controls, portfolio = {}) {
   const label = document.getElementById("risk-label");
+  const sub = document.getElementById("risk-sub");
   const paused = controls.automation_paused;
   const killed = controls.kill_switch;
   const reject = controls.last_risk_reject;
-  label.textContent = killed ? "Killed" : paused ? "Paused" : reject ? reject : "Clear";
+  const exposurePct = Number(portfolio.gross_exposure_pct ?? 0);
+  const maxExposurePct = Number((portfolio.max_gross_exposure_pct ?? 0.85) * 100);
+
+  let text = "Clear";
+  let klass = "buy";
+  if (killed) {
+    text = "Killed";
+    klass = "sell";
+  } else if (paused) {
+    text = "Paused";
+    klass = "stale";
+  } else if (exposurePct >= maxExposurePct - 0.5) {
+    text = "At Cap";
+    klass = "stale";
+  } else if (reject && reject !== "gross_exposure_limit") {
+    text = RISK_LABELS[reject] || "Guarded";
+    klass = "stale";
+  } else if (exposurePct >= maxExposurePct * 0.65) {
+    text = "Deploying";
+    klass = "buy";
+  }
+
+  label.textContent = text;
   label.className = "risk-pill";
-  label.classList.add(killed ? "sell" : paused || reject ? "stale" : "buy");
+  label.classList.add(klass);
+  if (sub) {
+    sub.textContent = `Exposure ${exposurePct.toFixed(0)}% of ${maxExposurePct.toFixed(0)}% cap`;
+  }
 }
 
 function renderConnection(connected) {

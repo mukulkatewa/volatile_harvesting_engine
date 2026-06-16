@@ -147,6 +147,13 @@ class PlatformDatabase:
 
     def persist_fill_dataclass(self, fill: Any) -> None:
         payload = asdict(fill)
-        if hasattr(fill.filled_at, "isoformat"):
-            payload["filled_at"] = fill.filled_at.isoformat()
+        side = payload.get("side")
+        if hasattr(side, "value"):
+            payload["side"] = side.value
+        filled_at = getattr(fill, "filled_at", None) or getattr(fill, "timestamp", None)
+        if hasattr(filled_at, "isoformat"):
+            payload["filled_at"] = filled_at.isoformat()
+        else:
+            payload["filled_at"] = datetime.now(tz=timezone.utc).isoformat()
+        payload["fill_id"] = f"{fill.order_id}:{fill.quantity}:{payload['filled_at']}"
         self.save_fill(payload)

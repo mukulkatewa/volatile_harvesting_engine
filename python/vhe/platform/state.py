@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from enum import Enum
 
 from vhe.backtest.models import Fill, Order
 from vhe.live.models import LiveQuote
@@ -52,23 +53,23 @@ class PlatformState:
             "phase": self.phase,
             "server_time": now.isoformat(),
             "controls": asdict(self.controls),
-            "capital": self.capital,
             "regimes": self.regimes,
-            "indicators": self.indicators,
-            "bars": self.bars,
-            "feed_health": self.feed_health,
-            "strategy_status": self.strategy_status,
-            "execution_orders": self.execution_orders,
-            "reconciliation": self.reconciliation,
             "quotes": {symbol: _quote_to_dict(quote, now=now) for symbol, quote in self.quotes.items()},
-            "plans": {symbol: asdict(plan) for symbol, plan in self.plans.items()},
-            "momentum_plans": {symbol: asdict(plan) for symbol, plan in self.momentum_plans.items()},
-            "pair_plans": {pair_id: asdict(plan) for pair_id, plan in self.pair_plans.items()},
-            "pair_trades": self.pair_trades[-20:],
-            "orders": [asdict(order) for order in self.orders[-25:]],
-            "fills": [asdict(fill) for fill in self.fills[-25:]],
+            "plans": {symbol: _dataclass_to_dict(plan) for symbol, plan in self.plans.items()},
+            "momentum_plans": {symbol: _dataclass_to_dict(plan) for symbol, plan in self.momentum_plans.items()},
+            "pair_plans": {pair_id: _dataclass_to_dict(plan) for pair_id, plan in self.pair_plans.items()},
+            "pair_trades": [_json_ready(trade) for trade in self.pair_trades[-20:]],
+            "orders": [_dataclass_to_dict(order) for order in self.orders[-25:]],
+            "fills": self._fills_snapshot(),
             "events": [entry.to_dict() for entry in self.events[-40:]],
-            "portfolio": self.portfolio,
+            "portfolio": _json_ready(self.portfolio),
+            "capital": _json_ready(self.capital),
+            "indicators": _json_ready(self.indicators),
+            "bars": _json_ready(self.bars),
+            "feed_health": _json_ready(self.feed_health),
+            "strategy_status": _json_ready(self.strategy_status),
+            "execution_orders": _json_ready(self.execution_orders),
+            "reconciliation": _json_ready(self.reconciliation),
         }
 
     def append_event(self, entry: PlatformEvent) -> None:
@@ -76,9 +77,34 @@ class PlatformState:
         if len(self.events) > 200:
             del self.events[: len(self.events) - 200]
 
+    def _fills_snapshot(self) -> list:
+        if self.fills:
+            return [_dataclass_to_dict(fill) for fill in self.fills[-25:]]
+        return _json_ready(self.portfolio.get("fills", []))[-25:]
+
 
 def _quote_to_dict(quote: LiveQuote, *, now: datetime) -> dict:
-    payload = asdict(quote)
+    payload = _dataclass_to_dict(quote)
     payload["spread_bps"] = quote.spread_bps
     payload["age_ms"] = max(int((now - quote.timestamp).total_seconds() * 1000), 0)
     return payload
+
+
+def _dataclass_to_dict(obj: object) -> dict:
+    return _json_ready(asdict(obj))
+
+
+def _json_ready(value: object) -> object:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, dict):
+        return {key: _json_ready(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_ready(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_ready(item) for item in value]
+    return value

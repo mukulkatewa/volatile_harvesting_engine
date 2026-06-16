@@ -47,6 +47,8 @@ body::before {
   grid-template-columns: 220px 1fr;
   min-height: 100vh;
   overflow-x: clip;
+  position: relative;
+  isolation: isolate;
 }
 
 .sidebar {
@@ -84,7 +86,7 @@ body::before {
 .brand strong { display: block; font-size: 15px; }
 .brand span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
 
-.nav { display: grid; gap: 6px; }
+.nav { display: grid; gap: 6px; position: relative; z-index: 2; }
 
 .nav-item {
   border: 1px solid transparent;
@@ -98,6 +100,8 @@ body::before {
   transition: background 180ms ease, color 180ms ease, border-color 180ms ease, transform 180ms ease;
   position: relative;
   z-index: 3;
+  pointer-events: auto;
+  user-select: none;
 }
 
 .nav-item:hover {
@@ -639,6 +643,11 @@ body::before {
 .sell { color: var(--red) !important; }
 .muted { color: var(--muted); }
 .stale { color: var(--amber) !important; }
+
+.risk-pill {
+  font-size: clamp(20px, 2.6vw, 28px) !important;
+  white-space: nowrap;
+}
 
 .risk-pill.buy { color: var(--green); }
 .risk-pill.sell { color: var(--red); }

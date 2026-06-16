@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from vhe.backtest.models import Fill, Order
 from vhe.config.loader import PlatformConfig
@@ -48,6 +48,9 @@ class StrategyOrchestrator:
                 symbol_capital=grid_alloc.capital,
                 no_buy_above_fair_value_pct=strategies.grid.no_buy_above_fair_value_pct,
                 min_spacing=strategies.grid.min_spacing,
+                fill_tolerance_pct=strategies.grid.fill_tolerance_pct,
+                seed_deploy_pct=strategies.grid.seed_deploy_pct,
+                level_capital_multiplier=strategies.grid.level_capital_multiplier,
             )
         )
         self.momentum_strategy = MomentumStrategy(
@@ -128,6 +131,7 @@ class StrategyOrchestrator:
         return self.pair_strategy.orders_from_plan(plan, quote_a, quote_b)
 
     def process_quote(self, quote: LiveQuote, snapshot: IndicatorSnapshot, regime: MarketRegime) -> None:
+        self._refresh_grid_capital()
         grid_plan, momentum_plan = self.build_plans(quote, snapshot, regime)
         self.state.quotes[quote.symbol] = quote
         self.state.plans[quote.symbol] = grid_plan
@@ -144,7 +148,8 @@ class StrategyOrchestrator:
         pair_orders = self.build_pair_plan()
         single_name_orders: list[Order] = []
         if not self.is_pair_symbol(quote.symbol):
-            single_name_orders = self.grid_strategy.orders_from_plan(grid_plan, quote) + self.momentum_strategy.orders_from_plan(
+            current_qty = self.single_name_quantity(quote.symbol)
+            single_name_orders = self.grid_strategy.orders_from_plan(grid_plan, quote, current_quantity=current_qty) + self.momentum_strategy.orders_from_plan(
                 momentum_plan, quote
             )
 
@@ -152,10 +157,29 @@ class StrategyOrchestrator:
         pair_fills = self._submit_pair_orders_atomic(pair_orders)
         self.state.orders.extend(single_name_orders + pair_orders)
         self.state.fills.extend(single_name_fills + pair_fills)
-        self.state.portfolio = self.execution.snapshot_portfolio(self.state.quotes)
+        self.state.portfolio = self._enrich_portfolio(self.execution.snapshot_portfolio(self.state.quotes))
         self.state.capital = self.capital_allocator.buckets_snapshot()
         self.state.execution_orders = self.execution.orders_snapshot()
         self.state.strategy_status = self._strategy_status(grid_plan, momentum_plan, regime)
+
+    def _enrich_portfolio(self, portfolio: dict) -> dict:
+        enriched = dict(portfolio)
+        enriched["max_gross_exposure_pct"] = self.risk_guard.config.max_gross_exposure_pct
+        enriched["max_symbol_exposure_pct"] = self.risk_guard.config.max_symbol_exposure_pct
+        return enriched
+
+    def _refresh_grid_capital(self) -> None:
+        alloc = self.capital_allocator.symbol_grid_allocation(
+            "GRID",
+            active_symbol_count=self._active_grid_symbol_count(),
+        )
+        self.grid_strategy.config = replace(self.grid_strategy.config, symbol_capital=alloc.capital)
+
+    def _active_grid_symbol_count(self) -> int:
+        tradeable = [symbol for symbol in self.config.strategies.feed.symbols if not self.is_pair_symbol(symbol)]
+        in_range = sum(1 for symbol in tradeable if self.state.regimes.get(symbol) == MarketRegime.RANGE.value)
+        active = in_range or len(tradeable)
+        return max(min(active, self.config.live.max_symbols), 1)
 
     def _strategy_status(self, grid_plan: DynamicGridPlan, momentum_plan: MomentumPlan, regime: MarketRegime) -> dict:
         pair_plan = next(iter(self.state.pair_plans.values()), None)
@@ -186,7 +210,7 @@ class StrategyOrchestrator:
             self._log_event(event("risk", "Rejected pair batch: atomic_no_fill", "warning"))
             return []
 
-        self.state.portfolio = self.execution.snapshot_portfolio(self.state.quotes)
+        self.state.portfolio = self._enrich_portfolio(self.execution.snapshot_portfolio(self.state.quotes))
         for fill in fills:
             self._log_event(event("fill", f"{fill.side.value} {fill.symbol} x{fill.quantity} @ {fill.price:.2f}"))
             self._persist_fill(fill)
@@ -216,7 +240,7 @@ class StrategyOrchestrator:
             fill = self.execution.submit(order, quote)
             if fill is not None:
                 fills.append(fill)
-                self.state.portfolio = self.execution.snapshot_portfolio(self.state.quotes)
+                self.state.portfolio = self._enrich_portfolio(self.execution.snapshot_portfolio(self.state.quotes))
                 self._log_event(event("fill", f"{fill.side.value} {fill.symbol} x{fill.quantity} @ {fill.price:.2f}"))
                 self._persist_fill(fill)
         return fills
@@ -231,8 +255,12 @@ class StrategyOrchestrator:
             )
 
     def _persist_fill(self, fill: Fill) -> None:
-        if self.database and self.config.live.storage.persist_fills:
+        if not self.database or not self.config.live.storage.persist_fills:
+            return
+        try:
             self.database.persist_fill_dataclass(fill)
+        except Exception as exc:
+            self._log_event(event("risk", f"Fill persist failed: {exc}", "warning"))
 
 
 def build_risk_guard(config: PlatformConfig) -> RiskGuard:
@@ -242,6 +270,7 @@ def build_risk_guard(config: PlatformConfig) -> RiskGuard:
             max_daily_loss_pct=risk.max_daily_loss_pct,
             max_gross_exposure_pct=risk.max_gross_exposure_pct,
             max_single_symbol_qty=risk.max_single_symbol_qty,
+            max_symbol_exposure_pct=risk.max_symbol_exposure_pct,
         )
     )
 

@@ -30,7 +30,7 @@ def test_paper_broker_applies_buy_and_sell_fills() -> None:
     assert broker.submit(sell, _quote(105)) is not None
 
     snapshot = broker.snapshot({"AAA": _quote(105)})
-    assert snapshot["positions"][0]["quantity"] == 0
+    assert snapshot["positions"] == []
     assert snapshot["realized_pnl"] > 0
     assert snapshot["fees_paid"] > 0
 
@@ -54,7 +54,7 @@ def test_paper_broker_supports_simulated_short_then_cover() -> None:
     assert broker.submit(buy, _quote(100)) is not None
 
     snapshot = broker.snapshot({"AAA": _quote(100)})
-    assert snapshot["positions"][0]["quantity"] == 0
+    assert snapshot["positions"] == []
     assert snapshot["realized_pnl"] > 0
 
 

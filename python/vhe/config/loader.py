@@ -25,8 +25,16 @@ class LiveRiskConfig(BaseModel):
     max_daily_loss_pct: float = 0.01
     max_gross_exposure_pct: float = 0.75
     max_single_symbol_qty: int = 100
+    max_symbol_deploy_pct: float = 0.10
+    max_symbol_exposure_pct: float = 0.30
     kill_switch_on_stale_quotes: bool = True
     max_quote_stale_ms: int = 3000
+
+
+class PaperTradingConfig(BaseModel):
+    aggressive_fills: bool = False
+    limit_tolerance_bps: float = 25.0
+    fill_full_quantity: bool = False
 
 
 class StorageConfig(BaseModel):
@@ -47,6 +55,7 @@ class LiveConfig(BaseModel):
     broker: BrokerConfig = Field(default_factory=BrokerConfig)
     risk: LiveRiskConfig = Field(default_factory=LiveRiskConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
+    paper: PaperTradingConfig = Field(default_factory=PaperTradingConfig)
 
     @classmethod
     def from_yaml(cls, path: Path) -> LiveConfig:
@@ -59,6 +68,9 @@ class GridStrategyConfig(BaseModel):
     max_levels: int = 5
     no_buy_above_fair_value_pct: float = 0.03
     min_spacing: float = 0.05
+    fill_tolerance_pct: float = 0.0
+    seed_deploy_pct: float = 0.0
+    level_capital_multiplier: float = 1.0
 
 
 class MomentumStrategyConfig(BaseModel):

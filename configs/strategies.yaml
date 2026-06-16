@@ -1,27 +1,31 @@
 grid:
   atr_multiplier: 0.35
   max_levels: 5
-  no_buy_above_fair_value_pct: 0.03
+  no_buy_above_fair_value_pct: 0.015
   min_spacing: 0.05
+  fill_tolerance_pct: 0.004
+  seed_deploy_pct: 0.40
+  level_capital_multiplier: 1.75
 
 momentum:
-  risk_per_trade_inr: 62.5
-  max_capital_per_trade_inr: 3750.0
+  risk_per_trade_inr: 187.5
+  max_capital_per_trade_inr: 11250.0
 
 pair:
   symbol_a: RELIANCE
   symbol_b: HDFCBANK
   hedge_ratio: 1.0
-  mean: -0.04
-  std: 0.006
+  # log(RELIANCE) - log(HDFCBANK); calibrated from 6mo NSE daily closes (yfinance)
+  mean: 0.5001
+  std: 0.0656
   entry_z: 1.5
   exit_z: 0.25
   max_abs_z: 3.0
 
 capital:
-  grid_bucket_pct: 0.50
-  pair_bucket_pct: 0.25
-  momentum_bucket_pct: 0.15
+  grid_bucket_pct: 0.70
+  pair_bucket_pct: 0.10
+  momentum_bucket_pct: 0.10
   reserve_bucket_pct: 0.10
 
 regime:
@@ -32,11 +36,20 @@ regime:
 
 feed:
   symbols:
+    # Large-cap NSE liquid names for paper grid testing (yfinance .NS)
     - RELIANCE
     - HDFCBANK
-    - TMPV
+    - ICICIBANK
+    - INFY
+    - TCS
+    - SBIN
+    - BHARTIARTL
+    - ITC
+    - LT
+    - KOTAKBANK
     - BEL
-  interval_seconds: 15.0
+    - TMPV
+  interval_seconds: 18.0
   source: yfinance
   bar_interval_minutes: 5
   fallback_to_simulated: true

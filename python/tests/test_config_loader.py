@@ -6,7 +6,8 @@ def test_load_platform_config_reads_yaml(project_root) -> None:
     config = load_platform_config(project_root)
     assert config.live.capital_cap_inr == 25_000
     assert config.strategies.pair.symbol_a == "RELIANCE"
-    assert config.strategies.capital.grid_bucket_pct == 0.50
+    assert config.strategies.capital.grid_bucket_pct == 0.70
+    assert config.strategies.grid.seed_deploy_pct == 0.40
 
 
 def test_capital_allocator_buckets(project_root) -> None:
@@ -19,8 +20,8 @@ def test_capital_allocator_buckets(project_root) -> None:
     )
     buckets = allocator.compute_buckets()
     assert buckets.total == 25_000
-    assert buckets.grid == 12_500
-    assert buckets.pair == 6_250
+    assert buckets.grid == 17_500
+    assert buckets.pair == 2_500
     assert buckets.reserve == 2_500
     assert buckets.deployable == 22_500
 

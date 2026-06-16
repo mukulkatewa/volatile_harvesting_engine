@@ -58,7 +58,7 @@ class PlatformRuntime:
         live = self.config.live
         self.state.mode = live.mode
         self.bar_aggregator = BarAggregator(interval_minutes=self.config.strategies.feed.bar_interval_minutes)
-        self.paper_broker = PaperBroker(initial_cash=live.capital_cap_inr)
+        self.paper_broker = self._build_paper_broker(live.capital_cap_inr)
         self.pair_ledger = PairLedger()
         self.risk_guard = build_risk_guard(self.config)
         self.capital_allocator = CapitalAllocator(
@@ -66,6 +66,7 @@ class PlatformRuntime:
             buckets=self.config.strategies.capital,
             max_symbols=live.max_symbols,
             max_grid_levels=live.max_grid_levels,
+            max_symbol_deploy_pct=live.risk.max_symbol_deploy_pct,
         )
         self.regime_service = RegimeService(config=self.config.strategies.regime)
         db_path = live.storage.sqlite_path
@@ -94,6 +95,15 @@ class PlatformRuntime:
         self.state.phase = "2"
         self._restore_persisted_events()
 
+    def _build_paper_broker(self, initial_cash: float) -> PaperBroker:
+        paper = self.config.live.paper
+        return PaperBroker(
+            initial_cash=initial_cash,
+            aggressive_fills=paper.aggressive_fills,
+            limit_tolerance_bps=paper.limit_tolerance_bps,
+            fill_full_quantity=paper.fill_full_quantity,
+        )
+
     def _restore_persisted_events(self) -> None:
         if self.database is None:
             return
@@ -118,7 +128,7 @@ class PlatformRuntime:
 
     def reset_paper(self) -> None:
         live = self.config.live
-        self.paper_broker = PaperBroker(initial_cash=live.capital_cap_inr)
+        self.paper_broker = self._build_paper_broker(live.capital_cap_inr)
         self.execution = ExecutionEngine.from_config(
             mode=live.mode,
             paper_broker=self.paper_broker,
@@ -127,11 +137,25 @@ class PlatformRuntime:
         self.orchestrator.execution = self.execution
         self.pair_ledger = PairLedger()
         self.orchestrator.pair_ledger = self.pair_ledger
+        self.orchestrator.grid_strategy.reset_session()
+        self.indicator_service.reset_session()
+        self.risk_guard.kill_switch = False
+        self.risk_guard.automation_paused = False
+        self.state.controls.kill_switch = False
+        self.state.controls.automation_paused = False
+        self.state.controls.last_risk_reject = None
         self.state.orders.clear()
         self.state.fills.clear()
         self.state.pair_trades.clear()
-        self.state.portfolio = self.paper_broker.snapshot(self.state.quotes)
-        self.state.controls.last_risk_reject = None
+        self.state.plans.clear()
+        self.state.momentum_plans.clear()
+        self.state.pair_plans.clear()
+        self.state.regimes.clear()
+        self.state.indicators.clear()
+        self.state.execution_orders.clear()
+        self.state.strategy_status.clear()
+        self.state.portfolio = self.orchestrator._enrich_portfolio(self.paper_broker.snapshot(self.state.quotes))
+        self.state.capital = self.capital_allocator.buckets_snapshot()
         self.state.append_event(event("control", "Paper account reset"))
 
     async def start_feed(self) -> None:
@@ -222,11 +246,11 @@ class PlatformRuntime:
         if not self.subscribers:
             return
         snapshot = self.state.snapshot()
-        stale = set()
-        for websocket in self.subscribers:
+        stale: set = set()
+        for websocket in list(self.subscribers):
             try:
                 await websocket.send_json(snapshot)
-            except RuntimeError:
+            except Exception:
                 stale.add(websocket)
         self.subscribers.difference_update(stale)
 

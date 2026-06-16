@@ -15,6 +15,9 @@ class DynamicGridConfig:
     symbol_capital: float = 18_750.0
     no_buy_above_fair_value_pct: float = 0.03
     min_spacing: float = 0.05
+    fill_tolerance_pct: float = 0.0
+    seed_deploy_pct: float = 0.0
+    level_capital_multiplier: float = 1.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,7 +44,13 @@ class DynamicGridPlan:
 class DynamicGridStrategy:
     config: DynamicGridConfig = field(default_factory=DynamicGridConfig)
     _last_grid_center: dict[str, float] = field(default_factory=dict)
+    _seeded_symbols: set[str] = field(default_factory=set)
     _order_sequence: int = 0
+
+    def reset_session(self) -> None:
+        self._last_grid_center.clear()
+        self._seeded_symbols.clear()
+        self._order_sequence = 0
 
     def build_plan(self, inputs: DynamicGridInputs) -> DynamicGridPlan:
         quote = inputs.quote
@@ -82,16 +91,50 @@ class DynamicGridStrategy:
             reset_reason=reset_reason,
         )
 
-    def orders_from_plan(self, plan: DynamicGridPlan, quote: LiveQuote) -> list[Order]:
+    def orders_from_plan(self, plan: DynamicGridPlan, quote: LiveQuote, *, current_quantity: int = 0) -> list[Order]:
         orders: list[Order] = []
-        level_capital = self.config.symbol_capital / self.config.max_levels
-        for level_index, price in enumerate(plan.buy_levels, start=1):
-            if quote.ltp <= price:
-                quantity = max(int(level_capital // price), 1)
-                orders.append(self._order(quote.timestamp, quote.symbol, OrderSide.BUY, price, quantity, f"dynamic_grid_level_{level_index}"))
+        level_capital = (self.config.symbol_capital / self.config.max_levels) * self.config.level_capital_multiplier
+        tolerance = 1.0 + self.config.fill_tolerance_pct
 
-        if plan.sell_target is not None and quote.ltp >= plan.sell_target:
-            orders.append(self._order(quote.timestamp, quote.symbol, OrderSide.SELL, plan.sell_target, 1, "dynamic_grid_mean_exit"))
+        if (
+            self.config.seed_deploy_pct > 0
+            and current_quantity == 0
+            and plan.buy_levels
+            and plan.regime == MarketRegime.RANGE
+            and quote.symbol not in self._seeded_symbols
+        ):
+            deploy_capital = self.config.symbol_capital * self.config.seed_deploy_pct
+            quantity = max(int(deploy_capital // quote.ltp), 1)
+            orders.append(
+                self._order(
+                    quote.timestamp,
+                    quote.symbol,
+                    OrderSide.BUY,
+                    quote.ltp,
+                    quantity,
+                    "dynamic_grid_seed_deploy",
+                )
+            )
+            self._seeded_symbols.add(quote.symbol)
+
+        for level_index, price in enumerate(plan.buy_levels, start=1):
+            if quote.ltp <= price * tolerance:
+                quantity = max(int(level_capital // price), 1)
+                orders.append(
+                    self._order(quote.timestamp, quote.symbol, OrderSide.BUY, price, quantity, f"dynamic_grid_level_{level_index}")
+                )
+
+        if plan.sell_target is not None and quote.ltp >= plan.sell_target and current_quantity > 0:
+            orders.append(
+                self._order(
+                    quote.timestamp,
+                    quote.symbol,
+                    OrderSide.SELL,
+                    plan.sell_target,
+                    current_quantity,
+                    "dynamic_grid_mean_exit",
+                )
+            )
 
         return orders
 

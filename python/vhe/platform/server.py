@@ -83,7 +83,6 @@ async def activate_kill_switch() -> dict:
 @app.post("/api/control/reset-paper")
 async def reset_paper() -> dict:
     runtime.reset_paper()
-    runtime.state.portfolio = runtime.paper_broker.snapshot(runtime.state.quotes)
     await runtime._broadcast_state()
     return runtime.state.snapshot()
 
@@ -126,7 +125,11 @@ async def ws_state(websocket: WebSocket) -> None:
     await websocket.accept()
     runtime.subscribers.add(websocket)
     try:
-        await websocket.send_json(runtime.state.snapshot())
+        try:
+            await websocket.send_json(runtime.state.snapshot())
+        except Exception:
+            runtime.subscribers.discard(websocket)
+            return
         while True:
             await asyncio.sleep(30)
     finally:

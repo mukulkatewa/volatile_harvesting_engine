@@ -44,7 +44,7 @@ class IndicatorService:
         self._session_high[quote.symbol] = session_high
         drawdown_pct = ((quote.ltp - session_high) / session_high * 100) if session_high > 0 else 0.0
 
-        if len(history) < 20:
+        if len(history) < 14:
             atr_value = max(quote.high - quote.low, quote.ltp * 0.006)
             ema_20 = quote.close - (atr_value * 0.04)
             ema_50 = quote.close - (atr_value * 0.14)

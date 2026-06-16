@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from datetime import date, datetime
+from enum import Enum
 
 from vhe.backtest.costs import EquityIntradayCostModel
 from vhe.backtest.models import Fill, Order, OrderSide
@@ -26,6 +28,9 @@ class PaperPosition:
 class PaperBroker:
     initial_cash: float = 25_000.0
     cost_model: EquityIntradayCostModel = field(default_factory=EquityIntradayCostModel)
+    aggressive_fills: bool = False
+    limit_tolerance_bps: float = 25.0
+    fill_full_quantity: bool = False
     cash: float = field(init=False)
     positions: dict[str, PaperPosition] = field(default_factory=dict)
     fills: list[Fill] = field(default_factory=list)
@@ -81,10 +86,12 @@ class PaperBroker:
             last_price = quote.ltp if quote else position.avg_price
             market_value = position.mark_to_market(last_price)
             unrealized = position.unrealized_pnl(last_price)
-            equity += market_value
             realized_pnl += position.realized_pnl
             unrealized_pnl += unrealized
             fees_paid += position.fees_paid
+            if position.quantity == 0:
+                continue
+            equity += market_value
             positions.append(
                 {
                     **asdict(position),
@@ -101,19 +108,21 @@ class PaperBroker:
             "realized_pnl": realized_pnl,
             "unrealized_pnl": unrealized_pnl,
             "fees_paid": fees_paid,
+            "gross_exposure": round(sum(position["market_value"] for position in positions), 2),
+            "gross_exposure_pct": round((sum(position["market_value"] for position in positions) / self.initial_cash) * 100, 1)
+            if self.initial_cash > 0
+            else 0.0,
             "positions": positions,
-            "fills": [asdict(fill) for fill in self.fills[-25:]],
+            "fills": [_json_ready(asdict(fill)) for fill in self.fills[-25:]],
         }
 
     def _preview_fill(self, order: Order, quote: LiveQuote, *, available_cash: float) -> Fill | None:
         if order.order_id in self.seen_order_ids:
             return None
-        if order.side == OrderSide.BUY and quote.ltp > order.price:
-            return None
-        if order.side == OrderSide.SELL and quote.ltp < order.price:
+        if not self._limit_order_fills(order, quote):
             return None
 
-        quantity = min(order.quantity, max(int(quote.volume * 0.01), 1))
+        quantity = order.quantity if self.fill_full_quantity else min(order.quantity, max(int(quote.volume * 0.01), 1))
         if quantity <= 0:
             return None
 
@@ -132,6 +141,21 @@ class PaperBroker:
             fees=fees,
             reason=order.reason,
         )
+
+    def _limit_order_fills(self, order: Order, quote: LiveQuote) -> bool:
+        if order.side == OrderSide.BUY:
+            if quote.ltp <= order.price:
+                return True
+            if not self.aggressive_fills:
+                return False
+            tolerance = order.price * (1 + self.limit_tolerance_bps / 10_000)
+            return quote.ltp <= tolerance
+        if quote.ltp >= order.price:
+            return True
+        if not self.aggressive_fills:
+            return False
+        tolerance = order.price * (1 - self.limit_tolerance_bps / 10_000)
+        return quote.ltp >= tolerance
 
     def _apply_fill(self, fill: Fill) -> None:
         position = self.positions.setdefault(fill.symbol, PaperPosition(symbol=fill.symbol))
@@ -183,3 +207,17 @@ class PaperBroker:
 
         self.cash += fill.price * fill.quantity - fill.fees
         position.realized_pnl -= fill.fees
+
+
+def _json_ready(value: object) -> object:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, dict):
+        return {key: _json_ready(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_ready(item) for item in value]
+    return value

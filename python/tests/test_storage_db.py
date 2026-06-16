@@ -1,5 +1,7 @@
 from pathlib import Path
+from datetime import datetime, timezone
 
+from vhe.backtest.models import Fill, OrderSide
 from vhe.storage.db import PlatformDatabase
 
 
@@ -25,3 +27,25 @@ def test_platform_database_persists_events_and_fills(tmp_path: Path) -> None:
     assert events[0]["message"] == "started"
     assert len(fills) == 1
     assert fills[0]["symbol"] == "AAA"
+
+
+def test_platform_database_persists_fill_dataclass(tmp_path: Path) -> None:
+    db = PlatformDatabase(tmp_path / "test.db")
+    fill = Fill(
+        order_id="dg-TMPV-1",
+        symbol="TMPV",
+        side=OrderSide.BUY,
+        price=390.4,
+        quantity=1,
+        timestamp=datetime(2026, 6, 16, 8, 0, tzinfo=timezone.utc),
+        fees=1.0,
+        reason="dynamic_grid_level_1",
+    )
+
+    db.persist_fill_dataclass(fill)
+
+    rows = db.recent_fills()
+    assert len(rows) == 1
+    assert rows[0]["symbol"] == "TMPV"
+    assert rows[0]["side"] == "BUY"
+    assert rows[0]["filled_at"].startswith("2026-06-16")
