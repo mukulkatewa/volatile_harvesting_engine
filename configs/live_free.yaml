@@ -23,7 +23,7 @@ risk:
   max_gross_exposure_pct: 0.75
   max_single_symbol_qty: 100
   kill_switch_on_stale_quotes: true
-  max_quote_stale_ms: 3000
+  max_quote_stale_ms: 120000
 
 storage:
   sqlite_path: data/vhe_platform.db

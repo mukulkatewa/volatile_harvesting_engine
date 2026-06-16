@@ -9,7 +9,11 @@ from vhe.live.feed_factory import build_quote_feed
 
 
 def test_build_quote_feed_simulated_by_default(project_root: Path) -> None:
-    config = load_platform_config(project_root)
+    base = load_platform_config(project_root)
+    strategies = base.strategies.model_copy(
+        update={"feed": base.strategies.feed.model_copy(update={"source": "simulated"})}
+    )
+    config = base.model_copy(update={"strategies": strategies})
     result = build_quote_feed(config, project_root=project_root)
     assert result.source == "simulated"
     assert isinstance(result.feed, SimulatedQuoteFeed)

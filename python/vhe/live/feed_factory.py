@@ -7,6 +7,7 @@ from pathlib import Path
 
 from vhe.config.loader import PlatformConfig
 from vhe.live.feed import LiveFeed, SimulatedQuoteFeed
+from vhe.live.yfinance_feed import YFinanceQuoteFeed
 from vhe.live.kite import nse_equity_token_map
 from vhe.live.kite_auth import KiteCredentialError, load_kite_credentials
 from vhe.live.kite_instruments import load_cached_instruments
@@ -27,11 +28,28 @@ def build_quote_feed(config: PlatformConfig, *, project_root: Path, trading_date
     feed_cfg = config.strategies.feed
     symbols = tuple(feed_cfg.symbols)
 
+    if feed_cfg.source == "simulated":
+        return FeedBuildResult(
+            feed=SimulatedQuoteFeed(symbols=list(symbols), interval_seconds=feed_cfg.interval_seconds),
+            source="simulated",
+            subscribed_symbols=symbols,
+        )
+
+    if feed_cfg.source == "yfinance":
+        interval = max(feed_cfg.interval_seconds, 10.0)
+        return FeedBuildResult(
+            feed=YFinanceQuoteFeed(symbols=list(symbols), interval_seconds=interval),
+            source="yfinance",
+            subscribed_symbols=symbols,
+            warning="yfinance quotes are delayed ~15 minutes during market hours",
+        )
+
     if feed_cfg.source != "kite":
         return FeedBuildResult(
             feed=SimulatedQuoteFeed(symbols=list(symbols), interval_seconds=feed_cfg.interval_seconds),
             source="simulated",
             subscribed_symbols=symbols,
+            warning=f"unknown feed.source={feed_cfg.source}; using simulated feed",
         )
 
     broker = config.live.broker

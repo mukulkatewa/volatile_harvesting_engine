@@ -97,7 +97,7 @@ Zerodha **Kite Personal** is free but **does not include live quotes or WebSocke
 
 | What | Free option |
 |------|-------------|
-| Test strategies + UI | `VHE_LIVE_CONFIG=live_free.yaml` + `feed.source: simulated` in `configs/strategies.yaml` |
+| Test strategies + UI | `VHE_LIVE_CONFIG=live_free.yaml` + `feed.source: yfinance` in `configs/strategies.yaml` |
 | End-of-day NSE data | `vhe data-ingest-nse --date YYYY-MM-DD` (bhavcopy, free) |
 | Paper PnL / grid / pairs | Simulated tick feed — runs 24/7, no Zerodha data fees |
 | Real orders later | Keep daily `KITE_ACCESS_TOKEN`; set `live_live.yaml` when ready — orders work on Personal, prices still need simulated or paid Connect |
