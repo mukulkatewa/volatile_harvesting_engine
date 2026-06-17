@@ -60,6 +60,46 @@ class PlatformDatabase:
                     value_json TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS paper_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    trading_date TEXT NOT NULL,
+                    mode TEXT NOT NULL,
+                    initial_cash REAL NOT NULL,
+                    started_at TEXT NOT NULL,
+                    ended_at TEXT,
+                    final_equity REAL,
+                    total_pnl REAL,
+                    realized_pnl REAL,
+                    unrealized_pnl REAL,
+                    fees_paid REAL,
+                    fill_count INTEGER NOT NULL DEFAULT 0,
+                    buy_fills INTEGER NOT NULL DEFAULT 0,
+                    sell_fills INTEGER NOT NULL DEFAULT 0,
+                    max_exposure_pct REAL NOT NULL DEFAULT 0,
+                    max_drawdown_pct REAL NOT NULL DEFAULT 0,
+                    peak_equity REAL,
+                    strategy_json TEXT,
+                    status TEXT NOT NULL DEFAULT 'active'
+                );
+
+                CREATE TABLE IF NOT EXISTS session_equity_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    equity REAL NOT NULL,
+                    cash REAL NOT NULL,
+                    gross_exposure REAL NOT NULL,
+                    unrealized_pnl REAL NOT NULL,
+                    realized_pnl REAL NOT NULL,
+                    recorded_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS session_fills (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    fill_id TEXT NOT NULL,
+                    UNIQUE(session_id, fill_id)
+                );
                 """
             )
 
@@ -157,3 +197,178 @@ class PlatformDatabase:
             payload["filled_at"] = datetime.now(tz=timezone.utc).isoformat()
         payload["fill_id"] = f"{fill.order_id}:{fill.quantity}:{payload['filled_at']}"
         self.save_fill(payload)
+        return payload["fill_id"]
+
+    def link_fill_to_session(self, session_id: str, fill_id: str) -> None:
+        with self.connection() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO session_fills (session_id, fill_id) VALUES (?, ?)",
+                (session_id, fill_id),
+            )
+
+    def create_paper_session(
+        self,
+        *,
+        session_id: str,
+        trading_date: str,
+        mode: str,
+        initial_cash: float,
+        started_at: str,
+    ) -> None:
+        with self.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO paper_sessions
+                (session_id, trading_date, mode, initial_cash, started_at, peak_equity, status)
+                VALUES (?, ?, ?, ?, ?, ?, 'active')
+                """,
+                (session_id, trading_date, mode, initial_cash, started_at, initial_cash),
+            )
+
+    def get_active_paper_session(self) -> dict[str, Any] | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM paper_sessions WHERE status = 'active' ORDER BY started_at DESC LIMIT 1"
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_paper_session(self, session_id: str) -> dict[str, Any] | None:
+        with self.connection() as conn:
+            row = conn.execute("SELECT * FROM paper_sessions WHERE session_id = ?", (session_id,)).fetchone()
+        if row is None:
+            return None
+        payload = dict(row)
+        payload["strategy_breakdown"] = json.loads(payload.pop("strategy_json") or "{}")
+        return payload
+
+    def list_paper_sessions(self, *, limit: int = 30) -> list[dict[str, Any]]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM paper_sessions ORDER BY started_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        sessions: list[dict[str, Any]] = []
+        for row in rows:
+            payload = dict(row)
+            payload["strategy_breakdown"] = json.loads(payload.pop("strategy_json") or "{}")
+            sessions.append(payload)
+        return sessions
+
+    def close_paper_session(
+        self,
+        *,
+        session_id: str,
+        ended_at: str,
+        final_equity: float,
+        total_pnl: float,
+        realized_pnl: float,
+        unrealized_pnl: float,
+        fees_paid: float,
+        fill_count: int,
+        strategy_breakdown: dict[str, int],
+        max_exposure_pct: float,
+        max_drawdown_pct: float,
+    ) -> None:
+        with self.connection() as conn:
+            conn.execute(
+                """
+                UPDATE paper_sessions
+                SET ended_at = ?, final_equity = ?, total_pnl = ?, realized_pnl = ?, unrealized_pnl = ?,
+                    fees_paid = ?, fill_count = ?, strategy_json = ?, max_exposure_pct = ?,
+                    max_drawdown_pct = ?, status = 'closed'
+                WHERE session_id = ?
+                """,
+                (
+                    ended_at,
+                    final_equity,
+                    total_pnl,
+                    realized_pnl,
+                    unrealized_pnl,
+                    fees_paid,
+                    fill_count,
+                    json.dumps(strategy_breakdown),
+                    max_exposure_pct,
+                    max_drawdown_pct,
+                    session_id,
+                ),
+            )
+
+    def increment_session_fill(self, session_id: str, *, side: str, strategy: str) -> None:
+        buy_inc = 1 if side == "BUY" else 0
+        sell_inc = 1 if side == "SELL" else 0
+        with self.connection() as conn:
+            row = conn.execute("SELECT strategy_json FROM paper_sessions WHERE session_id = ?", (session_id,)).fetchone()
+            breakdown = json.loads(row["strategy_json"] or "{}") if row else {}
+            breakdown[strategy] = breakdown.get(strategy, 0) + 1
+            conn.execute(
+                """
+                UPDATE paper_sessions
+                SET fill_count = fill_count + 1,
+                    buy_fills = buy_fills + ?,
+                    sell_fills = sell_fills + ?,
+                    strategy_json = ?
+                WHERE session_id = ?
+                """,
+                (buy_inc, sell_inc, json.dumps(breakdown), session_id),
+            )
+
+    def update_session_risk_peaks(
+        self,
+        session_id: str,
+        *,
+        max_exposure_pct: float,
+        max_drawdown_pct: float,
+        peak_equity: float,
+    ) -> None:
+        with self.connection() as conn:
+            conn.execute(
+                """
+                UPDATE paper_sessions
+                SET max_exposure_pct = ?, max_drawdown_pct = ?, peak_equity = ?
+                WHERE session_id = ?
+                """,
+                (max_exposure_pct, max_drawdown_pct, peak_equity, session_id),
+            )
+
+    def record_session_snapshot(
+        self,
+        *,
+        session_id: str,
+        equity: float,
+        cash: float,
+        gross_exposure: float,
+        unrealized_pnl: float,
+        realized_pnl: float,
+    ) -> None:
+        now = datetime.now(tz=timezone.utc).isoformat()
+        with self.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO session_equity_snapshots
+                (session_id, equity, cash, gross_exposure, unrealized_pnl, realized_pnl, recorded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (session_id, equity, cash, gross_exposure, unrealized_pnl, realized_pnl, now),
+            )
+
+    def session_snapshots(self, session_id: str) -> list[dict[str, Any]]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM session_equity_snapshots WHERE session_id = ? ORDER BY recorded_at ASC",
+                (session_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def fills_for_session(self, session_id: str) -> list[dict[str, Any]]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT f.*
+                FROM fills f
+                JOIN session_fills sf ON sf.fill_id = f.fill_id
+                WHERE sf.session_id = ?
+                ORDER BY f.filled_at ASC
+                """,
+                (session_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]

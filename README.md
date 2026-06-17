@@ -113,7 +113,20 @@ VHE_LIVE_CONFIG=live_free.yaml
 | **Terminal** | Equity, risk/exposure, capital buckets, quotes, positions |
 | **Strategies** | Grid buy levels, momentum state, pair z-score monitor |
 | **Execution** | Paper fill tape + pair ledger |
-| **Activity** | Control, risk, and fill event stream |
+| **Activity** | Multi-session paper stats, strategy health, sentiment roadmap, event stream |
+
+### Paper session stats (Activity tab)
+
+- **Multi-session P&L** — cumulative across closed IST trading days
+- **Today** — live session P&L, fills, minutes active, max deploy %
+- **Strategy health** — automated verdict (`too_early`, `deployed`, `promising`, …)
+- **Session table** — one row per paper session (auto-closes at 15:30 IST; Reset starts `YYYY-MM-DD-r2`)
+
+API: `GET /api/stats/paper`
+
+### News / sentiment (planned)
+
+Not wired yet. **CRASH regime** covers sharp price stress today. Planned overlay: ingest news → per-symbol sentiment score → risk guard pauses or sizes down before grid submits orders.
 
 ### Header controls
 

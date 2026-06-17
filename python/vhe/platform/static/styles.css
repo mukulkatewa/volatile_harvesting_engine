@@ -405,6 +405,94 @@ body::before {
   color: var(--text);
 }
 
+.data-table tfoot .positions-total td {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.data-table tfoot .positions-total td.muted {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.paper-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 4px 2px 8px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.stats-card {
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.stats-card span {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+.stats-card strong {
+  display: block;
+  font: 600 22px var(--mono);
+  margin-bottom: 6px;
+}
+
+.stats-card p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.stats-detail {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.stats-detail h3,
+.stats-breakdown h3,
+.stats-sentiment h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.stats-notes,
+.stats-plan {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.data-table.compact td,
+.data-table.compact th {
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .stats-detail {
+    grid-template-columns: 1fr;
+  }
+}
+
 .bars-section {
   margin-bottom: 14px;
 }

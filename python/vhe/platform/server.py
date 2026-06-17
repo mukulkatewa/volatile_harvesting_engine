@@ -37,6 +37,11 @@ async def api_state() -> dict:
     return runtime.state.snapshot()
 
 
+@app.get("/api/stats/paper")
+async def api_paper_stats() -> dict:
+    return runtime.paper_stats_report()
+
+
 @app.get("/api/config")
 async def api_config() -> dict:
     return {

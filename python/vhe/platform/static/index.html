@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/styles.css?v=10" />
+    <link rel="stylesheet" href="/static/styles.css?v=12" />
   </head>
   <body>
     <div class="app">
@@ -61,7 +61,16 @@
               <strong id="equity">—</strong>
               <div class="metric-sub">
                 <span>Cash <em id="cash">—</em></span>
-                <span class="pnl-wrap">Unrealized <em id="unrealized-pnl">—</em></span>
+                <span>Invested <em id="invested">—</em></span>
+              </div>
+              <div class="metric-sub">
+                <span>Unrealized <em id="unrealized-pnl">—</em></span>
+                <span>Realized <em id="realized-pnl">—</em></span>
+                <span>Total <em id="total-pnl">—</em></span>
+              </div>
+              <div class="metric-sub muted">
+                <span>Started <em id="initial-cash">—</em></span>
+                <span>Fees <em id="fees-paid">—</em></span>
               </div>
             </article>
             <article class="metric-card">
@@ -122,6 +131,7 @@
                 <table class="data-table">
                   <thead><tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>LTP</th><th>PnL</th></tr></thead>
                   <tbody id="positions-body"></tbody>
+                  <tfoot id="positions-foot"></tfoot>
                 </table>
               </div>
             </div>
@@ -154,12 +164,16 @@
 
         <section class="view" data-view="activity">
           <div class="card full">
+            <div class="card-head"><h2>Paper Session Stats</h2><span>Multi-session · strategy health</span></div>
+            <div id="paper-stats" class="paper-stats empty-state"><span>Collecting session data…</span></div>
+          </div>
+          <div class="card full">
             <div class="card-head"><h2>Activity Stream</h2><span>Controls · risk · fills</span></div>
             <div id="events" class="activity-stream empty-state"><span>No events yet</span></div>
           </div>
         </section>
       </main>
     </div>
-    <script src="/static/app.js?v=10"></script>
+    <script src="/static/app.js?v=12"></script>
   </body>
 </html>

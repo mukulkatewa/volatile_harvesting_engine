@@ -86,8 +86,7 @@ function render(payload) {
   document.getElementById("source-label").textContent = payload.source || "simulated";
   const equity = portfolio.equity ?? portfolio.cash ?? capitalTotal ?? 0;
   document.getElementById("equity").textContent = money.format(equity);
-  document.getElementById("cash").textContent = money.format(portfolio.cash ?? capitalTotal ?? 0);
-  setPnl("unrealized-pnl", portfolio.unrealized_pnl || 0);
+  renderPortfolioBreakdown(portfolio);
   renderRisk(payload.controls || {}, portfolio);
   renderCapital(payload.capital || {});
   renderStrategyStatus(payload.strategy_status || {});
@@ -101,6 +100,7 @@ function render(payload) {
   renderPairTrades(payload.pair_trades || []);
   renderFills(payload.fills?.length ? payload.fills : payload.portfolio?.fills || []);
   renderPositions(portfolio.positions || []);
+  renderPaperStats(payload.paper_stats || {});
   renderEvents(payload.events || []);
 }
 
@@ -211,19 +211,47 @@ function staleThresholdMs(source, health) {
 }
 
 function tickQuoteAges() {
-  if (!lastPayload?.quotes || lastServerTimeMs === null) return;
-  const drift = Date.now() - lastServerTimeMs;
+  if (!lastPayload?.quotes) return;
   const source = lastPayload.source;
   const threshold = staleThresholdMs(source, lastPayload.feed_health);
   for (const quote of Object.values(lastPayload.quotes)) {
     const row = quoteRows.get(quote.symbol);
     if (!row) continue;
-    const ageMs = Math.max(0, (quote.age_ms || 0) + drift);
+    const ageMs = quoteAgeMs(quote);
     const ageEl = row.querySelector(".age");
     if (!ageEl) continue;
     ageEl.textContent = `${ageMs}ms`;
     ageEl.className = `mono age ${ageMs > threshold ? "stale" : ""}`;
   }
+}
+
+function renderPortfolioBreakdown(portfolio) {
+  const initialCash = Number(portfolio.initial_cash ?? 0);
+  const cash = Number(portfolio.cash ?? 0);
+  const equity = Number(portfolio.equity ?? cash);
+  const invested = Number(portfolio.gross_exposure ?? Math.max(equity - cash, 0));
+  const unrealized = Number(portfolio.unrealized_pnl ?? 0);
+  const realized = Number(portfolio.realized_pnl ?? 0);
+  const fees = Number(portfolio.fees_paid ?? 0);
+  const totalPnl = initialCash > 0 ? equity - initialCash : unrealized + realized;
+
+  document.getElementById("cash").textContent = money.format(cash);
+  document.getElementById("invested").textContent = money.format(invested);
+  document.getElementById("initial-cash").textContent = money.format(initialCash);
+  document.getElementById("fees-paid").textContent = money.format(fees);
+  setPnl("unrealized-pnl", unrealized);
+  setPnl("realized-pnl", realized);
+  setPnl("total-pnl", totalPnl);
+}
+
+function quoteAgeMs(quote) {
+  if (quote.timestamp) {
+    const ts = Date.parse(quote.timestamp);
+    if (!Number.isNaN(ts)) {
+      return Math.max(0, Date.now() - ts);
+    }
+  }
+  return Math.max(0, Number(quote.age_ms) || 0);
 }
 
 function setPnl(id, value) {
@@ -411,7 +439,8 @@ function renderQuotes(quotes, regimes, indicators) {
     const regime = regimes[quote.symbol] || "UNKNOWN";
     const adx = indicators[quote.symbol]?.adx_14;
     const threshold = staleThresholdMs(lastPayload?.source, lastPayload?.feed_health);
-    const ageClass = quote.age_ms > threshold ? "stale" : "";
+    const ageMs = quoteAgeMs(quote);
+    const ageClass = ageMs > threshold ? "stale" : "";
 
     row.querySelector(".sym").textContent = quote.symbol;
     row.querySelector(".ltp").textContent = fmt.format(quote.ltp);
@@ -421,7 +450,7 @@ function renderQuotes(quotes, regimes, indicators) {
     row.querySelector(".adx").textContent = typeof adx === "number" ? fmt.format(adx) : "—";
     row.querySelector(".spread").textContent = quote.spread_bps === null ? "—" : fmt.format(quote.spread_bps);
     const ageEl = row.querySelector(".age");
-    ageEl.textContent = `${quote.age_ms}ms`;
+    ageEl.textContent = `${ageMs}ms`;
     ageEl.className = `mono age ${ageClass}`;
   }
 
@@ -550,23 +579,131 @@ function renderFills(fills) {
 
 function renderPositions(positions) {
   const body = document.getElementById("positions-body");
+  const foot = document.getElementById("positions-foot");
   if (positions.length === 0) {
     body.innerHTML = `<tr><td colspan="5" class="muted">No open positions</td></tr>`;
+    if (foot) foot.innerHTML = "";
     return;
   }
+  let invested = 0;
+  let unrealized = 0;
   body.innerHTML = positions
-    .map(
-      (position) => `
+    .map((position) => {
+      const marketValue = Number(position.market_value ?? position.quantity * position.last_price);
+      const pnl = Number(position.unrealized_pnl ?? 0);
+      invested += marketValue;
+      unrealized += pnl;
+      return `
       <tr>
         <td><strong>${position.symbol}</strong></td>
         <td class="mono">${position.quantity}</td>
         <td class="mono">${fmt.format(position.avg_price)}</td>
         <td class="mono">${fmt.format(position.last_price)}</td>
-        <td class="mono ${position.unrealized_pnl >= 0 ? "buy" : "sell"}">${money.format(position.unrealized_pnl)}</td>
+        <td class="mono ${pnl >= 0 ? "buy" : "sell"}">${money.format(pnl)}</td>
       </tr>
-    `,
-    )
+    `;
+    })
     .join("");
+  if (foot) {
+    foot.innerHTML = `
+      <tr class="positions-total">
+        <td><strong>Total</strong></td>
+        <td class="mono">${positions.length}</td>
+        <td colspan="2" class="mono">Invested ${money.format(invested)}</td>
+        <td class="mono ${unrealized >= 0 ? "buy" : "sell"}">${money.format(unrealized)}</td>
+      </tr>
+    `;
+  }
+}
+
+const HEALTH_LABELS = {
+  too_early: "Too early",
+  promising: "Promising",
+  needs_review: "Needs review",
+  deployed: "Deployed",
+  idle: "Idle",
+};
+
+function renderPaperStats(stats) {
+  const target = document.getElementById("paper-stats");
+  if (!target) return;
+  if (!stats || !stats.current_session) {
+    target.classList.add("empty-state");
+    target.innerHTML = "<span>Collecting session data…</span>";
+    return;
+  }
+  target.classList.remove("empty-state");
+  const multi = stats.multi_session || {};
+  const current = stats.current_session || {};
+  const health = stats.strategy_health || {};
+  const sentiment = stats.sentiment || {};
+  const sessions = stats.sessions || [];
+  const breakdown = current.strategy_breakdown || {};
+  const verdict = HEALTH_LABELS[health.verdict] || health.verdict || "—";
+
+  target.innerHTML = `
+    <div class="stats-grid">
+      <article class="stats-card">
+        <span>Multi-session</span>
+        <strong class="${Number(multi.cumulative_pnl) >= 0 ? "buy" : "sell"}">${money.format(multi.cumulative_pnl || 0)}</strong>
+        <p>${multi.sessions_count || 0} closed · win ${multi.win_rate_pct || 0}% · fees ${money.format(multi.total_fees || 0)}</p>
+      </article>
+      <article class="stats-card">
+        <span>Today (${current.session_id || "—"})</span>
+        <strong class="${Number(current.total_pnl) >= 0 ? "buy" : "sell"}">${money.format(current.total_pnl || 0)}</strong>
+        <p>${current.minutes_active || 0}m · ${current.fill_count || 0} fills · ${current.max_exposure_pct || 0}% max deploy</p>
+      </article>
+      <article class="stats-card">
+        <span>Strategy health</span>
+        <strong class="stale">${verdict}</strong>
+        <p>${health.summary || "—"}</p>
+      </article>
+      <article class="stats-card">
+        <span>News / sentiment</span>
+        <strong class="muted">${sentiment.status === "not_configured" ? "Not wired" : sentiment.status}</strong>
+        <p>${sentiment.headline || "—"}</p>
+      </article>
+    </div>
+    <div class="stats-detail">
+      <div class="stats-breakdown">
+        <h3>Current sleeve activity</h3>
+        <p>Grid ${breakdown.grid || 0} · Pair ${breakdown.pair || 0} · Momentum ${breakdown.momentum || 0} · Exits ${health.grid_exits || 0}</p>
+        <ul class="stats-notes">
+          ${(health.notes || []).map((note) => `<li>${note}</li>`).join("")}
+        </ul>
+      </div>
+      <div class="stats-sentiment">
+        <h3>Sentiment roadmap</h3>
+        <p class="muted">${sentiment.detail || ""}</p>
+        <ol class="stats-plan">
+          ${(sentiment.integration_plan || []).map((step) => `<li>${step}</li>`).join("")}
+        </ol>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table compact">
+        <thead>
+          <tr><th>Session</th><th>Status</th><th>P&L</th><th>Fills</th><th>Max deploy</th><th>Grid</th></tr>
+        </thead>
+        <tbody>
+          ${sessions
+            .map(
+              (row) => `
+            <tr>
+              <td><strong>${row.session_id}</strong></td>
+              <td>${row.status}</td>
+              <td class="mono ${Number(row.total_pnl) >= 0 ? "buy" : "sell"}">${money.format(row.total_pnl || 0)}</td>
+              <td class="mono">${row.fill_count || 0}</td>
+              <td class="mono">${row.max_exposure_pct || 0}%</td>
+              <td class="mono">${(row.strategy_breakdown || {}).grid || 0}</td>
+            </tr>
+          `,
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
 }
 
 function renderEvents(events) {

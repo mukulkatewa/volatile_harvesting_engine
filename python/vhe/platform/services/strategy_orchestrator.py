@@ -33,6 +33,7 @@ class StrategyOrchestrator:
     capital_allocator: CapitalAllocator
     regime_service: RegimeService
     database: PlatformDatabase | None = None
+    session_tracker: object | None = None
     grid_strategy: DynamicGridStrategy = field(init=False)
     momentum_strategy: MomentumStrategy = field(init=False)
     pair_strategy: PairSpreadStrategy = field(init=False)
@@ -316,10 +317,15 @@ class StrategyOrchestrator:
             )
 
     def _persist_fill(self, fill: Fill) -> None:
+        if self.session_tracker is not None:
+            self.session_tracker.record_fill(fill)
         if not self.database or not self.config.live.storage.persist_fills:
             return
         try:
-            self.database.persist_fill_dataclass(fill)
+            fill_id = self.database.persist_fill_dataclass(fill)
+            session_id = getattr(self.session_tracker, "session_id", None)
+            if session_id:
+                self.database.link_fill_to_session(session_id, fill_id)
         except Exception as exc:
             self._log_event(event("risk", f"Fill persist failed: {exc}", "warning"))
 

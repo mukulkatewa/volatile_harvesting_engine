@@ -16,6 +16,8 @@ from vhe.live.feed_factory import FeedBuildResult, build_quote_feed
 from vhe.live.market_session import MarketSessionConfig, SessionPhase, session_phase
 from vhe.live.kite_ws import FeedHealth
 from vhe.live.models import LiveQuote
+from vhe.analytics.paper_stats import PaperStatsService
+from vhe.analytics.session_tracker import PaperSessionTracker
 from vhe.platform.events import event
 from vhe.platform.services.indicator_service import IndicatorService
 from vhe.platform.services.regime_service import RegimeService
@@ -39,6 +41,8 @@ class PlatformRuntime:
     execution: ExecutionEngine = field(init=False)
     reconciler: Reconciler = field(init=False)
     database: PlatformDatabase | None = field(init=False)
+    session_tracker: PaperSessionTracker = field(init=False)
+    stats_service: PaperStatsService = field(init=False)
     feed_health: FeedHealth = field(init=False)
     feed_task: asyncio.Task | None = None
     heartbeat_task: asyncio.Task | None = None
@@ -46,6 +50,7 @@ class PlatformRuntime:
     _project_root: Path = field(default_factory=lambda: _project_root())
     _market_session: MarketSessionConfig = field(init=False)
     _last_session_phase: SessionPhase | None = None
+    _last_stats_at: datetime | None = None
 
     @classmethod
     def from_project_root(cls, project_root: Path | None = None, live_config_name: str | None = None) -> PlatformRuntime:
@@ -77,6 +82,13 @@ class PlatformRuntime:
         if not db_path.is_absolute():
             db_path = self._project_root / db_path
         self.database = PlatformDatabase(db_path)
+        self.session_tracker = PaperSessionTracker(
+            self.database,
+            mode=live.mode,
+            initial_cash=live.capital_cap_inr,
+        )
+        self.session_tracker.bootstrap()
+        self.stats_service = PaperStatsService(self.database)
         self.execution = ExecutionEngine.from_config(
             mode=live.mode,
             paper_broker=self.paper_broker,
@@ -92,6 +104,7 @@ class PlatformRuntime:
             capital_allocator=self.capital_allocator,
             regime_service=self.regime_service,
             database=self.database,
+            session_tracker=self.session_tracker,
         )
         self.state.capital = self.capital_allocator.buckets_snapshot()
         self.state.portfolio = self.execution.snapshot_portfolio({})
@@ -99,6 +112,7 @@ class PlatformRuntime:
         self.state.phase = "2"
         self._market_session = _market_session_from_config(self.config)
         self._restore_persisted_events()
+        self._refresh_paper_stats(force=True)
 
     def _build_paper_broker(self, initial_cash: float) -> PaperBroker:
         paper = self.config.live.paper
@@ -162,6 +176,8 @@ class PlatformRuntime:
         self.state.portfolio = self.orchestrator._enrich_portfolio(self.paper_broker.snapshot(self.state.quotes))
         self.state.capital = self.capital_allocator.buckets_snapshot()
         self.state.append_event(event("control", "Paper account reset"))
+        self.session_tracker.on_reset_paper(initial_cash=live.capital_cap_inr)
+        self._refresh_paper_stats(force=True)
 
     async def start_feed(self) -> None:
         if self.feed_task is not None and not self.feed_task.done():
@@ -244,7 +260,28 @@ class PlatformRuntime:
         if self.config.live.mode == "live":
             self.state.reconciliation = self.reconciler.sync()
         self._enforce_stale_feed_guard()
+        self.session_tracker.maybe_snapshot(self.state.portfolio)
+        self._refresh_paper_stats()
         await self._broadcast_state()
+
+    def _refresh_paper_stats(self, *, force: bool = False) -> None:
+        now = datetime.now(tz=timezone.utc)
+        if not force and self._last_stats_at is not None:
+            if (now - self._last_stats_at).total_seconds() < 10:
+                return
+        self._last_stats_at = now
+        if self.stats_service is None:
+            return
+        self.state.paper_stats = self.stats_service.build_report(
+            portfolio=self.state.portfolio,
+            active_session=self.session_tracker.active_session_row(),
+        )
+
+    def paper_stats_report(self) -> dict:
+        return self.stats_service.build_report(
+            portfolio=self.state.portfolio,
+            active_session=self.session_tracker.active_session_row(),
+        )
 
     def _on_session_phase_change(self, phase: SessionPhase) -> None:
         if phase == self._last_session_phase:
@@ -253,8 +290,11 @@ class PlatformRuntime:
         self._last_session_phase = phase
         if phase == SessionPhase.CLOSED and previous not in {None, SessionPhase.CLOSED}:
             self.state.append_event(event("session", "NSE cash session closed — monitoring only", "info"))
+            self.session_tracker.on_market_close(self.state.portfolio)
+            self._refresh_paper_stats(force=True)
         elif phase == SessionPhase.OPEN and previous in {SessionPhase.PRE_MARKET, SessionPhase.CLOSED, None}:
             self.state.append_event(event("session", "NSE session open — automation active", "info"))
+            self.session_tracker.on_market_open(self.state.portfolio)
         elif phase == SessionPhase.FORCE_EXIT and previous == SessionPhase.OPEN:
             self.state.append_event(event("session", "Force exit window — squaring intraday positions", "warning"))
 
@@ -280,6 +320,8 @@ class PlatformRuntime:
                     market_closed=market_closed,
                 )
             self._enforce_stale_feed_guard()
+            self.session_tracker.maybe_snapshot(self.state.portfolio)
+            self._refresh_paper_stats()
             await self._broadcast_state()
 
     def _enforce_stale_feed_guard(self) -> None:
