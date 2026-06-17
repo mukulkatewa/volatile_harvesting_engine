@@ -16,6 +16,7 @@ from vhe.strategies.pair_spread import PairSpreadPlan
 class PlatformControls:
     automation_paused: bool = False
     kill_switch: bool = False
+    kill_switch_reason: str | None = None
     last_risk_reject: str | None = None
 
 

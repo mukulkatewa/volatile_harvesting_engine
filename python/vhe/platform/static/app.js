@@ -632,6 +632,10 @@ function renderPaperStats(stats) {
     target.innerHTML = "<span>Collecting session data…</span>";
     return;
   }
+  const killed = lastPayload?.controls?.kill_switch;
+  const killBanner = killed
+    ? `<div class="stats-alert sell">Kill switch is ON — trading blocked. Click <strong>Resume</strong> in the header (feed is healthy).</div>`
+    : "";
   target.classList.remove("empty-state");
   const multi = stats.multi_session || {};
   const current = stats.current_session || {};
@@ -642,6 +646,7 @@ function renderPaperStats(stats) {
   const verdict = HEALTH_LABELS[health.verdict] || health.verdict || "—";
 
   target.innerHTML = `
+    ${killBanner}
     <div class="stats-grid">
       <article class="stats-card">
         <span>Multi-session</span>

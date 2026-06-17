@@ -23,6 +23,7 @@ class RiskDecision:
 class RiskGuard:
     config: RiskConfig
     kill_switch: bool = False
+    kill_switch_reason: str | None = None
     automation_paused: bool = False
 
     def evaluate(self, order: Order, portfolio: dict) -> RiskDecision:

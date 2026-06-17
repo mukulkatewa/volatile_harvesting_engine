@@ -51,6 +51,7 @@ class PlatformRuntime:
     _market_session: MarketSessionConfig = field(init=False)
     _last_session_phase: SessionPhase | None = None
     _last_stats_at: datetime | None = None
+    _feed_started_at: datetime | None = None
 
     @classmethod
     def from_project_root(cls, project_root: Path | None = None, live_config_name: str | None = None) -> PlatformRuntime:
@@ -159,8 +160,10 @@ class PlatformRuntime:
         self.orchestrator.grid_strategy.reset_session()
         self.indicator_service.reset_session()
         self.risk_guard.kill_switch = False
+        self.risk_guard.kill_switch_reason = None
         self.risk_guard.automation_paused = False
         self.state.controls.kill_switch = False
+        self.state.controls.kill_switch_reason = None
         self.state.controls.automation_paused = False
         self.state.controls.last_risk_reject = None
         self.state.orders.clear()
@@ -201,6 +204,7 @@ class PlatformRuntime:
             try:
                 build = build_quote_feed(self.config, project_root=self._project_root)
                 self._init_feed_health(build)
+                self._feed_started_at = datetime.now(tz=timezone.utc)
                 self.state.source = build.source
                 self.state.connected = True
                 message = f"Feed started ({build.source})"
@@ -327,18 +331,53 @@ class PlatformRuntime:
     def _enforce_stale_feed_guard(self) -> None:
         health = self.state.feed_health
         if health.get("market_closed"):
+            self._maybe_clear_stale_kill_switch(health)
             return
+
         if not health.get("is_stale"):
+            self._maybe_clear_stale_kill_switch(health)
             return
+
         if not self.config.live.risk.kill_switch_on_stale_quotes:
+            return
+        if self._in_feed_grace_period():
             return
         if self.risk_guard.kill_switch:
             return
         self.risk_guard.kill_switch = True
+        self.risk_guard.kill_switch_reason = "stale_quote_feed"
         self.state.controls.kill_switch = True
+        self.state.controls.kill_switch_reason = "stale_quote_feed"
         self.state.controls.last_risk_reject = "stale_quote_feed"
         stale = ", ".join(health.get("stale_symbols", []))
         self.state.append_event(event("risk", f"Kill switch: stale quotes ({stale})", "danger"))
+
+    def _in_feed_grace_period(self) -> bool:
+        if self._feed_started_at is None:
+            return True
+        elapsed = (datetime.now(tz=timezone.utc) - self._feed_started_at).total_seconds()
+        if elapsed < 45:
+            return True
+        if len(self.state.quotes) < max(1, len(self.feed_health.subscribed_symbols) // 2):
+            return True
+        return False
+
+    def _maybe_clear_stale_kill_switch(self, health: dict) -> None:
+        if not self.risk_guard.kill_switch:
+            return
+        reason = self.risk_guard.kill_switch_reason or self.state.controls.kill_switch_reason
+        if reason == "manual_kill":
+            return
+        if reason not in {None, "stale_quote_feed"}:
+            return
+        if health.get("is_stale"):
+            return
+        self.risk_guard.kill_switch = False
+        self.risk_guard.kill_switch_reason = None
+        self.state.controls.kill_switch = False
+        self.state.controls.kill_switch_reason = None
+        self.state.controls.last_risk_reject = None
+        self.state.append_event(event("risk", "Kill switch cleared — feed healthy", "info"))
 
     async def _broadcast_state(self) -> None:
         if not self.subscribers:

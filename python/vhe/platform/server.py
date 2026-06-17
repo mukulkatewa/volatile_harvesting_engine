@@ -67,8 +67,10 @@ async def pause_automation() -> dict:
 async def resume_automation() -> dict:
     runtime.risk_guard.automation_paused = False
     runtime.risk_guard.kill_switch = False
+    runtime.risk_guard.kill_switch_reason = None
     runtime.state.controls.automation_paused = False
     runtime.state.controls.kill_switch = False
+    runtime.state.controls.kill_switch_reason = None
     runtime.state.controls.last_risk_reject = None
     runtime.state.append_event(event("control", "Automation resumed"))
     await runtime._broadcast_state()
@@ -78,7 +80,9 @@ async def resume_automation() -> dict:
 @app.post("/api/control/kill")
 async def activate_kill_switch() -> dict:
     runtime.risk_guard.kill_switch = True
+    runtime.risk_guard.kill_switch_reason = "manual_kill"
     runtime.state.controls.kill_switch = True
+    runtime.state.controls.kill_switch_reason = "manual_kill"
     runtime.state.controls.last_risk_reject = "kill_switch_active"
     runtime.state.append_event(event("risk", "Kill switch activated", "danger"))
     await runtime._broadcast_state()

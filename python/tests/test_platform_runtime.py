@@ -46,3 +46,28 @@ def test_reset_paper_clears_positions_and_risk_state() -> None:
     assert runtime.risk_guard.kill_switch is False
     assert runtime.state.portfolio["positions"] == []
     assert runtime.state.portfolio["gross_exposure_pct"] == 0.0
+
+
+def test_stale_kill_switch_auto_clears_when_feed_recovers() -> None:
+    runtime = PlatformRuntime.from_project_root()
+    runtime.risk_guard.kill_switch = True
+    runtime.risk_guard.kill_switch_reason = "stale_quote_feed"
+    runtime.state.controls.kill_switch = True
+    runtime.state.controls.kill_switch_reason = "stale_quote_feed"
+    runtime.state.feed_health = {"is_stale": False, "market_closed": False}
+
+    runtime._maybe_clear_stale_kill_switch(runtime.state.feed_health)
+
+    assert runtime.risk_guard.kill_switch is False
+    assert runtime.state.controls.kill_switch_reason is None
+
+
+def test_manual_kill_switch_not_auto_cleared() -> None:
+    runtime = PlatformRuntime.from_project_root()
+    runtime.risk_guard.kill_switch = True
+    runtime.risk_guard.kill_switch_reason = "manual_kill"
+    runtime.state.feed_health = {"is_stale": False, "market_closed": False}
+
+    runtime._maybe_clear_stale_kill_switch(runtime.state.feed_health)
+
+    assert runtime.risk_guard.kill_switch is True
