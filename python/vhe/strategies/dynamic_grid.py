@@ -153,6 +153,22 @@ class DynamicGridStrategy:
                 )
             )
 
+        if (
+            current_quantity > 0
+            and plan.regime in {MarketRegime.CRASH, MarketRegime.TREND_DOWN}
+            and not any(order.side == OrderSide.SELL for order in orders)
+        ):
+            orders.append(
+                self._order(
+                    quote.timestamp,
+                    quote.symbol,
+                    OrderSide.SELL,
+                    quote.ltp,
+                    current_quantity,
+                    "dynamic_grid_regime_exit",
+                )
+            )
+
         return orders
 
     def _reset_reason(self, *, symbol: str, fair_value: float, spacing: float) -> str | None:

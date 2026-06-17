@@ -36,7 +36,8 @@ class IndicatorService:
             "ltp": quote.ltp,
         }
         history = self._history.setdefault(quote.symbol, deque(maxlen=self.history_size))
-        history.append(bar)
+        if not history or history[-1]["close"] != quote.close or history[-1]["high"] != quote.high:
+            history.append(bar)
 
         session_high = self._session_high.get(quote.symbol, quote.ltp)
         if quote.ltp > session_high:
@@ -62,6 +63,7 @@ class IndicatorService:
             adx_value = float(adx_series.iloc[-1])
             if pd.isna(adx_value):
                 adx_value = 18.0
+            adx_value = max(0.0, min(adx_value, 100.0))
             fair_value = ema_50
 
         return IndicatorSnapshot(

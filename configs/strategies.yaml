@@ -4,7 +4,7 @@ grid:
   no_buy_above_fair_value_pct: 0.015
   min_spacing: 0.05
   fill_tolerance_pct: 0.004
-  seed_deploy_pct: 0.40
+  seed_deploy_pct: 0.25
   level_capital_multiplier: 1.75
 
 momentum:
