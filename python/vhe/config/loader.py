@@ -113,7 +113,9 @@ class RegimeConfig(BaseModel):
     range_adx_threshold: float = 20.0
     trend_adx_threshold: float = 25.0
     fair_value_band_pct: float = 0.03
-    crash_drawdown_pct: float = -1.5
+    # Intraday circuit breaker only. Normal 1-3% pullbacks are the dips the grid
+    # harvests; crash-exit should fire on genuine collapses, not routine noise.
+    crash_drawdown_pct: float = -6.0
 
 
 class FeedConfig(BaseModel):

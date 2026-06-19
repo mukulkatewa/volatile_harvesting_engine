@@ -26,7 +26,7 @@ class RegimeDetector:
     range_adx_threshold: float = 20.0
     trend_adx_threshold: float = 25.0
     fair_value_band_pct: float = 0.03
-    crash_drawdown_pct: float = -1.5
+    crash_drawdown_pct: float = -6.0
 
     def classify(self, inputs: RegimeInputs) -> MarketRegime:
         if inputs.intraday_drawdown_pct <= self.crash_drawdown_pct:

@@ -14,6 +14,28 @@ def test_from_yfinance_symbol() -> None:
     assert from_yfinance_symbol("RELIANCE.NS") == "RELIANCE"
 
 
+def test_quote_uses_last_valid_bar_skipping_forming_nan() -> None:
+    from datetime import datetime, timezone
+
+    import pandas as pd
+
+    import vhe.live.yfinance_feed as yf_module
+
+    # Last row is the still-forming intraday bar with NaN close -> must use prior bar.
+    frame = pd.DataFrame(
+        {
+            "Open": [100.0, 101.0, float("nan")],
+            "High": [101.0, 102.0, float("nan")],
+            "Low": [99.0, 100.0, float("nan")],
+            "Close": [100.5, 101.5, float("nan")],
+            "Volume": [1000, 1200, 0],
+        }
+    )
+    quote = yf_module._quote_from_single_frame("RELIANCE", frame, datetime.now(tz=timezone.utc))
+    assert quote is not None
+    assert quote.ltp == 101.5
+
+
 def test_fetch_yfinance_quotes_mock(monkeypatch) -> None:
     from datetime import datetime, timezone
 

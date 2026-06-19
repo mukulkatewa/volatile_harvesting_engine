@@ -11,6 +11,36 @@ def test_lexicon_score_detects_bearish_terms() -> None:
     assert lexicon_score("Record profit beat estimates rally") > 0.5
 
 
+def test_engine_refresh_symbol_runs_without_import_error() -> None:
+    # Regression: engine.refresh_symbol used filter_buzz_items without importing it,
+    # silently killing every sentiment refresh. It must run and score buzz now.
+    from vhe.sentiment.engine import SentimentEngine
+
+    engine = SentimentEngine(
+        [],
+        half_life_hours=12.0,
+        halt_score=-0.55,
+        elevated_score=-0.25,
+        reduce_size_multiplier=0.5,
+        widen_spacing_multiplier=1.35,
+    )
+    negative = [
+        BuzzItem(
+            source="reddit",
+            symbol="INFY",
+            title="INFY fraud probe selloff bankruptcy scandal downgrade",
+            url="x",
+            engagement=9000,
+            published_at=datetime.now(tz=timezone.utc),
+            text="investigation crash plunge",
+        )
+    ]
+    row, items = engine.refresh_symbol("INFY", extra_items=negative)
+    assert row.status == SentimentStatus.HALT
+    assert row.action == SentimentAction.HALT
+    assert len(items) == 1
+
+
 def test_match_symbol_aliases() -> None:
     assert match_symbol("Reliance Industries Q4 results", "RELIANCE")
     assert match_symbol("HDFC Bank earnings", "HDFCBANK")

@@ -118,7 +118,10 @@ class SentimentService:
                     extra = self._last30days_collector.collect(symbol)
                 except Exception:
                     extra = []
-            row, items = self.engine.refresh_symbol(symbol, extra_items=extra or None)
+            try:
+                row, items = self.engine.refresh_symbol(symbol, extra_items=extra or None)
+            except Exception:
+                row, items = self.engine.score_items(symbol, [])
             symbols[symbol] = row
             all_items.extend(items)
         if self._last30days_collector is not None:

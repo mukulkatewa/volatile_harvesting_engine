@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from vhe.sentiment.collectors.base import BuzzCollector
 from vhe.sentiment.models import BuzzItem, SentimentAction, SentimentStatus, SymbolSentiment
 from vhe.sentiment.scoring import aggregate_symbol_score
+from vhe.sentiment.trending import filter_buzz_items
 
 
 class SentimentEngine:

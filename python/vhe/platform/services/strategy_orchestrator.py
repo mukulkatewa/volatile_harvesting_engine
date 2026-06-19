@@ -138,6 +138,10 @@ class StrategyOrchestrator:
         for symbol in self.state.active_trading_symbols:
             if self.is_pair_symbol(symbol) or not self._grid_symbol_active(symbol):
                 continue
+            if self.sentiment_service is not None and not self.sentiment_service.allows_buy(symbol):
+                # Do not place fresh buy ladders on names under a sentiment halt.
+                self.execution.cancel_resting_except(symbol, set())
+                continue
             plan = self.state.plans.get(symbol)
             quote = self.state.quotes.get(symbol)
             if plan is None or quote is None:
@@ -177,18 +181,39 @@ class StrategyOrchestrator:
                 adjusted.append(order)
                 continue
             multiplier = self.sentiment_service.size_multiplier_for(order.symbol)
-            if multiplier >= 0.999:
-                adjusted.append(order)
-                continue
             if multiplier <= 0:
                 self.state.controls.last_risk_reject = "sentiment_reduce_zero"
                 continue
-            qty = max(int(order.quantity * multiplier), 1)
+            if abs(multiplier - 1.0) < 0.001:
+                adjusted.append(order)
+                continue
+            # Reduce on cautionary buzz, scale up on strong positive buzz (risk caps still apply).
+            qty = max(int(round(order.quantity * multiplier)), 1)
             if qty == order.quantity:
                 adjusted.append(order)
             else:
                 adjusted.append(replace(order, quantity=qty))
         return adjusted
+
+    def _sentiment_exit_order(self, quote: LiveQuote, current_quantity: int) -> Order | None:
+        # Sentiment-driven SELL: when a held single-name turns to HALT (strongly
+        # negative buzz), exit the position as a risk-off stop regardless of P&L.
+        if self.sentiment_service is None or self.is_pair_symbol(quote.symbol):
+            return None
+        if current_quantity <= 0:
+            return None
+        if self.sentiment_service.allows_buy(quote.symbol):
+            return None
+        return Order(
+            order_id=f"sx-{quote.symbol}-{len(self.state.orders) + 1}",
+            symbol=quote.symbol,
+            side=OrderSide.SELL,
+            order_type=OrderType.LIMIT,
+            price=quote.ltp,
+            quantity=current_quantity,
+            created_at=quote.timestamp,
+            reason="sentiment_halt_exit",
+        )
 
     def is_pair_symbol(self, symbol: str) -> bool:
         return symbol in {self.pair_strategy.config.symbol_a, self.pair_strategy.config.symbol_b}
@@ -329,21 +354,27 @@ class StrategyOrchestrator:
         single_name_orders: list[Order] = []
         if not self.is_pair_symbol(quote.symbol):
             current_qty = self.single_name_quantity(quote.symbol)
-            grid_active = self._grid_symbol_active(quote.symbol)
-            if force_exit_only or (trading_open and grid_active):
-                position = self.paper_broker.positions.get(quote.symbol)
-                average_cost = position.avg_price if position else 0.0
-                single_name_orders = self.grid_strategy.orders_from_plan(
-                    grid_plan,
-                    quote,
-                    current_quantity=current_qty,
-                    seed_deploy_allowed=seed_allowed and self._grid_symbol_active(quote.symbol),
-                    average_cost=average_cost,
-                )
-            elif trading_open and not grid_active:
+            sentiment_exit = self._sentiment_exit_order(quote, current_qty)
+            if sentiment_exit is not None:
+                # Negative buzz on a held name -> risk-off: flatten and stop re-arming.
                 self.execution.cancel_resting_except(quote.symbol, set())
-            if trading_open and grid_active:
-                single_name_orders.extend(self.momentum_strategy.orders_from_plan(momentum_plan, quote))
+                single_name_orders = [sentiment_exit]
+            else:
+                grid_active = self._grid_symbol_active(quote.symbol)
+                if force_exit_only or (trading_open and grid_active):
+                    position = self.paper_broker.positions.get(quote.symbol)
+                    average_cost = position.avg_price if position else 0.0
+                    single_name_orders = self.grid_strategy.orders_from_plan(
+                        grid_plan,
+                        quote,
+                        current_quantity=current_qty,
+                        seed_deploy_allowed=seed_allowed and self._grid_symbol_active(quote.symbol),
+                        average_cost=average_cost,
+                    )
+                elif trading_open and not grid_active:
+                    self.execution.cancel_resting_except(quote.symbol, set())
+                if trading_open and grid_active:
+                    single_name_orders.extend(self.momentum_strategy.orders_from_plan(momentum_plan, quote))
 
         single_name_orders = _filter_orders_for_session(single_name_orders, session_phase)
         pair_orders = _filter_orders_for_session(pair_orders, session_phase)

@@ -101,7 +101,7 @@ class PaperSessionTracker:
 
     def _open_session(self, *, reset_suffix: int | None) -> None:
         trading_date = trading_date_ist()
-        session_id = trading_date if reset_suffix is None else f"{trading_date}-r{reset_suffix}"
+        session_id = self._free_session_id(trading_date, reset_suffix)
         now = datetime.now(tz=timezone.utc).isoformat()
         self.database.create_paper_session(
             session_id=session_id,
@@ -147,3 +147,13 @@ class PaperSessionTracker:
         sessions = self.database.list_paper_sessions(limit=50)
         same_day = [session for session in sessions if session.get("trading_date") == trading_date]
         return len(same_day) + 1
+
+    def _free_session_id(self, trading_date: str, reset_suffix: int | None) -> str:
+        # Guarantee a unique primary key even if a session for today already exists
+        # (e.g. same-day restart after a closed session, or rapid resets).
+        candidate = trading_date if reset_suffix is None else f"{trading_date}-r{reset_suffix}"
+        suffix = reset_suffix or 1
+        while self.database.get_paper_session(candidate) is not None:
+            suffix += 1
+            candidate = f"{trading_date}-r{suffix}"
+        return candidate

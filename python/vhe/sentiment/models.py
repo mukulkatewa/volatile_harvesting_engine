@@ -57,6 +57,8 @@ class SentimentSnapshot:
     integration_plan: tuple[str, ...] = (
         "Multi-source buzz ingest (Reddit, HN, last30days bridge)",
         "Engagement-weighted score with recency decay",
-        "Risk overlay: halt buys, reduce size, widen grid spacing",
+        "Trending heat ranks the active trading universe",
+        "Positive buzz scales up size; cautionary buzz reduces it",
+        "Risk overlay: HALT flattens held names and blocks new buys",
         "Momentum requires non-negative sentiment in TREND_UP",
     )

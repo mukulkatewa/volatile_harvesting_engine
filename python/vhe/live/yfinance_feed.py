@@ -20,6 +20,12 @@ FETCH_TIMEOUT_SECONDS = 20.0
 CHUNK_TIMEOUT_SECONDS = 15.0
 CACHE_MAX_AGE_SECONDS = 600.0
 CHUNK_SIZE = 5
+# Intraday resolution so the live LTP actually moves between polls (volatility to harvest).
+# Daily bars are static intraday and leave grid levels permanently untouched.
+INTRADAY_INTERVAL = "5m"
+INTRADAY_PERIOD = "1d"
+DAILY_INTERVAL = "1d"
+DAILY_PERIOD = "5d"
 
 
 def to_yfinance_symbol(symbol: str) -> str:
@@ -89,47 +95,53 @@ def fetch_yfinance_quotes(
 
 
 def fetch_yfinance_history_seed(symbols: list[str], *, lookback_days: int = 60) -> dict[str, list[dict[str, float]]]:
-    """Load daily OHLC history so ADX/ATR warm up immediately on yfinance mode."""
+    """Warm up ADX/ATR/EMA on the same intraday (5m) scale the live feed trades on.
+
+    Falls back to daily history when intraday is unavailable (e.g. extended holiday).
+    """
     import yfinance as yf
 
     if not symbols:
         return {}
 
     tickers = [to_yfinance_symbol(symbol) for symbol in symbols]
-    period = "3mo" if lookback_days > 60 else "2mo"
     seeds: dict[str, list[dict[str, float]]] = {}
 
-    if len(tickers) == 1:
-        frame = yf.download(
-            tickers[0],
-            period=period,
-            interval="1d",
-            progress=False,
-            threads=False,
-            auto_adjust=False,
-        )
-        bars = _bars_from_single_frame(frame)
-        if bars:
-            seeds[symbols[0]] = bars
-        return seeds
-
-    frame = yf.download(
-        " ".join(tickers),
-        period=period,
-        interval="1d",
-        progress=False,
-        threads=False,
-        group_by="ticker",
-        auto_adjust=False,
-    )
-    for symbol, ticker in zip(symbols, tickers, strict=False):
+    def _seed_from_frame(frame: object, symbol: str, ticker: str) -> None:
         if frame is None or getattr(frame, "empty", True):
-            continue
+            return
         columns = getattr(frame, "columns", None)
-        block = frame[ticker] if columns is not None and ticker in getattr(columns, "levels", [[]])[0] else frame
+        if columns is not None and getattr(columns, "nlevels", 1) > 1 and ticker in getattr(columns, "levels", [[]])[0]:
+            block = frame[ticker]
+        else:
+            block = frame
         bars = _bars_from_single_frame(block)
         if bars:
             seeds[symbol] = bars
+
+    def _download(period: str, interval: str) -> object:
+        joined = tickers[0] if len(tickers) == 1 else " ".join(tickers)
+        return yf.download(
+            joined,
+            period=period,
+            interval=interval,
+            progress=False,
+            threads=False,
+            group_by="ticker",
+            auto_adjust=False,
+        )
+
+    intraday = _download("5d", INTRADAY_INTERVAL)
+    for symbol, ticker in zip(symbols, tickers, strict=False):
+        _seed_from_frame(intraday, symbol, ticker)
+
+    missing = [s for s in symbols if s not in seeds]
+    if missing:
+        daily_period = "3mo" if lookback_days > 60 else "2mo"
+        daily = _download(daily_period, "1d")
+        for symbol, ticker in zip(symbols, tickers, strict=False):
+            if symbol in missing:
+                _seed_from_frame(daily, symbol, ticker)
     return seeds
 
 
@@ -186,14 +198,33 @@ def _fresh_cached_quotes(cache: dict[str, LiveQuote], now: datetime) -> list[Liv
 
 
 def _fetch_batch_quotes(symbols: list[str], timestamp: datetime, *, timeout_seconds: float) -> list[LiveQuote]:
+    # Prefer intraday bars (moving LTP); fall back to daily when intraday is empty
+    # (weekends/holidays/pre-open) so we still show the last available close.
+    quotes = _download_quotes(symbols, timestamp, timeout_seconds, INTRADAY_PERIOD, INTRADAY_INTERVAL)
+    fetched = {quote.symbol for quote in quotes}
+    missing = [symbol for symbol in symbols if symbol not in fetched]
+    if missing:
+        quotes.extend(_download_quotes(missing, timestamp, timeout_seconds, DAILY_PERIOD, DAILY_INTERVAL))
+    return quotes
+
+
+def _download_quotes(
+    symbols: list[str],
+    timestamp: datetime,
+    timeout_seconds: float,
+    period: str,
+    interval: str,
+) -> list[LiveQuote]:
     import yfinance as yf
 
+    if not symbols:
+        return []
     tickers = [to_yfinance_symbol(symbol) for symbol in symbols]
     if len(tickers) == 1:
         frame = yf.download(
             tickers[0],
-            period="5d",
-            interval="1d",
+            period=period,
+            interval=interval,
             progress=False,
             threads=False,
             auto_adjust=False,
@@ -204,8 +235,8 @@ def _fetch_batch_quotes(symbols: list[str], timestamp: datetime, *, timeout_seco
 
     frame = yf.download(
         " ".join(tickers),
-        period="5d",
-        interval="1d",
+        period=period,
+        interval=interval,
         progress=False,
         threads=False,
         group_by="ticker",
@@ -223,7 +254,15 @@ def _fetch_batch_quotes(symbols: list[str], timestamp: datetime, *, timeout_seco
 def _quote_from_single_frame(symbol: str, frame: object, timestamp: datetime) -> LiveQuote | None:
     if frame is None or getattr(frame, "empty", True):
         return None
-    row = frame.iloc[-1]
+    # The last intraday bar is often still forming (NaN close); walk back to the last valid bar.
+    row = None
+    for index in range(len(frame) - 1, -1, -1):
+        candidate = frame.iloc[index]
+        if _scalar(candidate["Close"]) > 0:
+            row = candidate
+            break
+    if row is None:
+        return None
     ltp = _scalar(row["Close"])
     if ltp <= 0:
         return None
