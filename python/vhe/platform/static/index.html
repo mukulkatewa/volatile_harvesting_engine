@@ -3,155 +3,202 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>VHE</title>
+    <title>VHE Terminal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/styles.css?v=19" />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/styles.css?v=20" />
   </head>
   <body>
-    <div class="kite-app">
-      <header class="kite-header">
-        <div class="kite-header-left">
-          <div class="kite-logo">VHE</div>
-          <nav class="kite-nav">
-            <button type="button" class="kite-nav-item active" data-panel="terminal">Dashboard</button>
-            <button type="button" class="kite-nav-item" data-panel="strategies">Strategies</button>
-            <button type="button" class="kite-nav-item" data-panel="execution">Orders</button>
-            <button type="button" class="kite-nav-item" data-panel="activity">Reports</button>
-          </nav>
-        </div>
-        <div class="kite-header-right">
-          <div class="kite-pill" id="session-badge">OPEN</div>
-          <span id="connection-label" class="kite-muted">Connecting</span>
-          <time id="ist-clock" class="kite-muted">--:--</time>
-        </div>
-      </header>
-
-      <div class="kite-toolbar">
-        <button type="button" id="pause-button" class="kite-btn">Pause</button>
-        <button type="button" id="resume-button" class="kite-btn primary">Resume</button>
-        <button type="button" id="reset-paper-button" class="kite-btn">Reset</button>
-        <button type="button" id="kill-button" class="kite-btn danger">Kill</button>
-        <button type="button" id="sentiment-refresh-button" class="kite-btn">Refresh Buzz</button>
-      </div>
-
-      <section class="view active" data-view="terminal">
-        <div class="kite-funds">
-          <div class="kite-fund">
-            <span>Total</span>
-            <strong id="equity">—</strong>
-          </div>
-          <div class="kite-fund">
-            <span>Available</span>
-            <strong id="cash">—</strong>
-          </div>
-          <div class="kite-fund">
-            <span>Invested</span>
-            <strong id="invested">—</strong>
-          </div>
-          <div class="kite-fund">
-            <span>P&amp;L</span>
-            <strong id="total-pnl">—</strong>
-          </div>
-          <div class="kite-fund muted">
-            <span>Fees</span>
-            <strong id="fees-paid">—</strong>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">V</div>
+          <div>
+            <strong>VHE</strong>
+            <span>Volatility Engine</span>
           </div>
         </div>
+        <nav class="nav">
+          <button type="button" class="nav-item active" data-panel="terminal">Terminal</button>
+          <button type="button" class="nav-item" data-panel="strategies">Strategies</button>
+          <button type="button" class="nav-item" data-panel="execution">Execution</button>
+          <button type="button" class="nav-item" data-panel="activity">Activity</button>
+        </nav>
+        <div class="sidebar-meta">
+          <div class="meta-row"><span>Phase</span><strong id="phase-label">0</strong></div>
+          <div class="meta-row"><span>Mode</span><strong id="mode-label">Paper</strong></div>
+          <div class="meta-row"><span>Feed</span><strong id="source-label">simulated</strong></div>
+          <div class="meta-row"><span>Buzz</span><strong id="sidebar-sentiment-label">—</strong></div>
+        </div>
+        <a id="sidebar-l30-link" class="sidebar-engine-link" href="https://github.com/mvanhorn/last30days-skill" target="_blank" rel="noopener">last30days-skill</a>
+      </aside>
 
-        <div class="kite-strip" id="command-strip"></div>
-
-        <div class="kite-card">
-          <div class="kite-card-head">
-            <h2>Trending · Buzz Leaders</h2>
-            <span id="edge-sentiment" class="kite-muted"></span>
+      <main class="main">
+        <header class="header">
+          <div class="header-left">
+            <div class="session-clock">
+              <span class="clock-label">IST</span>
+              <time id="ist-clock">--:--:--</time>
+            </div>
+            <div id="session-badge" class="session-badge open">OPEN</div>
+            <div class="connection">
+              <span id="connection-dot" class="pulse-dot"></span>
+              <span id="connection-label">Connecting</span>
+            </div>
           </div>
-          <div id="trending-strip" class="trending-strip"></div>
+          <div class="header-actions">
+            <button type="button" id="pause-button" class="ctrl-btn" title="Pause">Pause</button>
+            <button type="button" id="resume-button" class="ctrl-btn primary" title="Resume">Resume</button>
+            <button type="button" id="demo-fill-button" class="ctrl-btn" title="Demo fill">Demo</button>
+            <button type="button" id="reset-paper-button" class="ctrl-btn" title="Reset paper">Reset</button>
+            <button type="button" id="kill-button" class="ctrl-btn danger" title="Kill switch">Kill</button>
+          </div>
+        </header>
+
+        <div class="command-strip" id="command-strip">
+          <span class="cmd-chip muted">Initializing…</span>
         </div>
 
-        <div class="kite-split">
-          <div class="kite-card">
-            <div class="kite-card-head"><h2>Watchlist</h2><span class="kite-muted">Active symbols</span></div>
-            <div class="table-wrap">
-              <table class="kite-table">
-                <thead><tr><th>Symbol</th><th>LTP</th><th>Heat</th><th>Regime</th></tr></thead>
-                <tbody id="quotes-body"></tbody>
+        <section class="view active" data-view="terminal">
+          <div class="hero-metrics">
+            <article class="metric-card hero-equity">
+              <span>Portfolio Equity</span>
+              <strong id="equity">—</strong>
+              <div class="metric-sub">
+                <span>Cash <em id="cash">—</em></span>
+                <span>Invested <em id="invested">—</em></span>
+              </div>
+              <div class="metric-sub">
+                <span>Unrealized <em id="unrealized-pnl">—</em></span>
+                <span>Realized <em id="realized-pnl">—</em></span>
+                <span>Total <em id="total-pnl">—</em></span>
+              </div>
+              <div class="metric-sub muted">
+                <span>Started <em id="initial-cash">—</em></span>
+                <span>Fees <em id="fees-paid">—</em></span>
+              </div>
+            </article>
+            <article class="metric-card">
+              <span>Risk State</span>
+              <strong id="risk-label" class="risk-pill">Clear</strong>
+              <div class="metric-sub muted" id="risk-sub">Pre-trade guard active</div>
+            </article>
+            <article class="metric-card">
+              <span>Feed Health</span>
+              <strong id="feed-source-label" class="feed-source">—</strong>
+              <div class="metric-sub feed-health-sub">
+                <span>Tick age <em id="feed-tick-age">—</em></span>
+                <span id="feed-stale-label" class="muted">All symbols fresh</span>
+              </div>
+            </article>
+          </div>
+
+          <section class="capital-section">
+            <article class="metric-card capital-card full-width">
+              <div class="capital-head">
+                <span>Capital Buckets</span>
+                <strong id="capital-total">—</strong>
+              </div>
+              <div id="capital-bars" class="capital-bars"></div>
+            </article>
+          </section>
+
+          <section class="edge-section">
+            <article class="metric-card edge-card full-width">
+              <span>Active Edge</span>
+              <p id="edge-note" class="edge-note">Waiting for market regime…</p>
+              <div id="strategy-status" class="strategy-status"></div>
+              <div id="edge-sentiment" class="edge-sentiment muted"></div>
+            </article>
+          </section>
+
+          <section class="ticker-strip" id="ticker"></section>
+
+          <div class="panel-grid">
+            <div class="card">
+              <div class="card-head"><h2>Market Feed</h2><span>Live quotes</span></div>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead><tr><th>Symbol</th><th>LTP</th><th>Regime</th><th>ADX</th><th>Spread</th><th>Age</th></tr></thead>
+                  <tbody id="quotes-body"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-head"><h2>Positions</h2><span>MTM</span></div>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead><tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>LTP</th><th>PnL</th></tr></thead>
+                  <tbody id="positions-body"></tbody>
+                  <tfoot id="positions-foot"></tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <section class="bars-section" id="bars-section">
+            <div class="card full">
+              <div class="card-head"><h2>5-Minute Bars</h2><span>Intraday aggregation</span></div>
+              <div id="bars-grid" class="strategy-grid"></div>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" data-view="strategies">
+          <div class="card full">
+            <div class="card-head"><h2>Strategy Stack</h2><span>Grid · Momentum · Pair</span></div>
+            <div id="strategy-plans" class="strategy-grid"></div>
+          </div>
+          <div class="card full">
+            <div class="card-head"><h2>Pair Spread Monitor</h2><span>Z-score engine</span></div>
+            <div id="pair-plans" class="strategy-grid"></div>
+          </div>
+          <div class="card full">
+            <div class="card-head">
+              <h2>Sentiment Engine</h2>
+              <span id="strategies-sentiment-sources">Reddit · HN · last30days</span>
+              <button type="button" id="sentiment-refresh-button" class="ctrl-btn small">Refresh buzz</button>
+            </div>
+            <div id="sentiment-engine-badge" class="engine-badge muted"></div>
+            <div id="sentiment-panel" class="sentiment-panel empty-state"><span>Loading sentiment…</span></div>
+          </div>
+        </section>
+
+        <section class="view" data-view="execution">
+          <div class="panel-grid">
+            <div class="card">
+              <div class="card-head"><h2>Execution Tape</h2><span>Paper fills</span></div>
+              <div id="fills" class="tape empty-state"><span>No fills yet</span></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><h2>Pair Ledger</h2><span>Multi-leg cycles</span></div>
+              <div id="pair-trades" class="tape empty-state"><span>No pair trades yet</span></div>
+            </div>
+          </div>
+          <div class="card full">
+            <div class="card-head"><h2>Resting Grid Orders</h2><span id="pending-orders-meta">Paper limit book</span></div>
+            <div class="table-wrap table-wrap-compact">
+              <table class="data-table compact">
+                <thead><tr><th>Symbol</th><th>Side</th><th>Limit</th><th>Qty</th><th>Level</th></tr></thead>
+                <tbody id="pending-orders-body"></tbody>
               </table>
             </div>
           </div>
-          <div class="kite-card">
-            <div class="kite-card-head"><h2>Holdings</h2><span class="kite-muted">Live MTM</span></div>
-            <div class="table-wrap">
-              <table class="kite-table">
-                <thead><tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>LTP</th><th>P&amp;L</th></tr></thead>
-                <tbody id="positions-body"></tbody>
-                <tfoot id="positions-foot"></tfoot>
-              </table>
-            </div>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="view" data-view="strategies">
-        <div class="kite-card">
-          <div class="kite-card-head"><h2>Grid Plans</h2></div>
-          <div id="strategy-plans" class="strategy-grid"></div>
-        </div>
-        <div class="kite-card">
-          <div class="kite-card-head"><h2>Pair Monitor</h2></div>
-          <div id="pair-plans" class="strategy-grid"></div>
-        </div>
-        <div class="kite-card">
-          <div class="kite-card-head">
-            <h2>Sentiment Engine</h2>
-            <span id="strategies-sentiment-sources" class="kite-muted"></span>
+        <section class="view" data-view="activity">
+          <div class="card full">
+            <div class="card-head"><h2>Paper Session Stats</h2><span>Multi-session · strategy health</span></div>
+            <div id="paper-stats" class="paper-stats empty-state"><span>Collecting session data…</span></div>
           </div>
-          <div id="sentiment-engine-badge" class="engine-badge"></div>
-          <div id="sentiment-panel" class="sentiment-panel empty-state"><span>Loading…</span></div>
-        </div>
-      </section>
-
-      <section class="view" data-view="execution">
-        <div class="kite-split">
-          <div class="kite-card">
-            <div class="kite-card-head"><h2>Fills</h2></div>
-            <div id="fills" class="tape empty-state"><span>No fills</span></div>
+          <div class="card full">
+            <div class="card-head"><h2>Activity Stream</h2><span>Controls · risk · fills</span></div>
+            <div id="events" class="activity-stream empty-state"><span>No events yet</span></div>
           </div>
-          <div class="kite-card">
-            <div class="kite-card-head"><h2>Pair Trades</h2></div>
-            <div id="pair-trades" class="tape empty-state"><span>No pair trades</span></div>
-          </div>
-        </div>
-        <div class="kite-card">
-          <div class="kite-card-head"><h2>Open Orders</h2><span id="pending-orders-meta" class="kite-muted"></span></div>
-          <div class="table-wrap">
-            <table class="kite-table compact">
-              <thead><tr><th>Symbol</th><th>Limit</th><th>Qty</th><th>Level</th></tr></thead>
-              <tbody id="pending-orders-body"></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <section class="view" data-view="activity">
-        <div class="kite-card">
-          <div class="kite-card-head"><h2>Session Stats</h2></div>
-          <div id="paper-stats" class="paper-stats empty-state"><span>Collecting…</span></div>
-        </div>
-        <div class="kite-card">
-          <div class="kite-card-head"><h2>Activity</h2></div>
-          <div id="events" class="activity-stream empty-state"><span>No events</span></div>
-        </div>
-      </section>
-
-      <footer class="kite-footer">
-        <span id="mode-label">Paper</span>
-        <span id="source-label">yfinance</span>
-        <span id="sidebar-sentiment-label">Buzz —</span>
-        <a id="sidebar-l30-link" href="https://github.com/mvanhorn/last30days-skill" target="_blank" rel="noopener">last30days-skill</a>
-      </footer>
+        </section>
+      </main>
     </div>
-    <script src="/static/app.js?v=19"></script>
+    <script src="/static/app.js?v=20"></script>
   </body>
 </html>

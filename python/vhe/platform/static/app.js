@@ -27,7 +27,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (button) button.addEventListener("click", () => postControl(endpoint));
   }
 
-  document.querySelectorAll(".kite-nav-item, .nav-item").forEach((button) => {
+  document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.preventDefault();
       switchView(button.dataset.panel);
@@ -82,10 +82,9 @@ function render(payload) {
   const portfolio = payload.portfolio || {};
   const capitalTotal = payload.capital?.total;
   renderConnection(payload.connected);
-  const modeEl = document.getElementById("mode-label");
-  if (modeEl) modeEl.textContent = titleCase(payload.mode || "paper");
-  const sourceEl = document.getElementById("source-label");
-  if (sourceEl) sourceEl.textContent = payload.source || "simulated";
+  document.getElementById("phase-label").textContent = payload.phase || "2";
+  document.getElementById("mode-label").textContent = titleCase(payload.mode || "paper");
+  document.getElementById("source-label").textContent = payload.source || "simulated";
   const equity = portfolio.equity ?? portfolio.cash ?? capitalTotal ?? 0;
   document.getElementById("equity").textContent = money.format(equity);
   renderPortfolioBreakdown(portfolio);
@@ -97,9 +96,7 @@ function render(payload) {
   renderMarketSession(payload.market_session || {});
   renderBars(payload.bars || {});
   renderTicker(payload.quotes || {}, payload.regimes || {});
-  const sentiment = resolveSentiment(payload);
-  renderTrendingStrip(sentiment, payload.active_trading_symbols || []);
-  renderQuotes(payload.quotes || {}, payload.regimes || {}, sentiment);
+  renderQuotes(payload.quotes || {}, payload.regimes || {}, payload.indicators || {});
   renderStrategies(payload.plans || {}, payload.momentum_plans || {}, payload.regimes || {});
   renderPairs(payload.pair_plans || {});
   renderPairTrades(payload.pair_trades || []);
@@ -107,6 +104,7 @@ function render(payload) {
   renderPositions(portfolio.positions || []);
   renderPendingOrders(payload.execution_orders || [], portfolio.resting_orders || []);
   renderPaperStats(payload.paper_stats || {});
+  const sentiment = resolveSentiment(payload);
   renderSentiment(sentiment);
   renderEdgeSentiment(sentiment, payload.active_trading_symbols || []);
   renderSidebarSentiment(sentiment);
@@ -123,13 +121,13 @@ function resolveSentiment(payload) {
 
 function switchView(viewId) {
   if (!viewId) return;
-  document.querySelectorAll(".kite-nav-item, .nav-item").forEach((el) => {
+  document.querySelectorAll(".nav-item").forEach((el) => {
     el.classList.toggle("active", el.dataset.panel === viewId);
   });
   document.querySelectorAll(".view").forEach((el) => {
     el.classList.toggle("active", el.dataset.view === viewId);
   });
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  document.querySelector(".main")?.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 async function pollState() {
@@ -161,7 +159,6 @@ const RISK_LABELS = {
 function renderRisk(controls, portfolio = {}) {
   const label = document.getElementById("risk-label");
   const sub = document.getElementById("risk-sub");
-  if (!label) return;
   const paused = controls.automation_paused;
   const killed = controls.kill_switch;
   const reject = controls.last_risk_reject;
@@ -255,12 +252,9 @@ function renderPortfolioBreakdown(portfolio) {
   const totalPnl = initialCash > 0 ? equity - initialCash : unrealized + realized;
 
   document.getElementById("cash").textContent = money.format(cash);
-  const investedEl = document.getElementById("invested");
-  if (investedEl) investedEl.textContent = money.format(invested);
-  const initialEl = document.getElementById("initial-cash");
-  if (initialEl) initialEl.textContent = money.format(initialCash);
-  const feesEl = document.getElementById("fees-paid");
-  if (feesEl) feesEl.textContent = money.format(fees);
+  document.getElementById("invested").textContent = money.format(invested);
+  document.getElementById("initial-cash").textContent = money.format(initialCash);
+  document.getElementById("fees-paid").textContent = money.format(fees);
   setPnl("unrealized-pnl", unrealized);
   setPnl("realized-pnl", realized);
   setPnl("total-pnl", totalPnl);
@@ -278,37 +272,13 @@ function quoteAgeMs(quote) {
 
 function setPnl(id, value) {
   const target = document.getElementById(id);
-  if (!target) return;
   target.textContent = money.format(value);
   target.classList.toggle("buy", value >= 0);
   target.classList.toggle("sell", value < 0);
 }
 
-function renderTrendingStrip(sentiment, activeSymbols) {
-  const strip = document.getElementById("trending-strip");
-  if (!strip) return;
-  const leaders = sentiment.trending_leaders || [];
-  const active = new Set(activeSymbols || sentiment.active_trading_symbols || []);
-  if (!leaders.length) {
-    strip.innerHTML = `<span class="kite-muted">Waiting for buzz refresh…</span>`;
-    return;
-  }
-  strip.innerHTML = leaders
-    .map((row) => {
-      const hot = active.has(row.symbol);
-      return `
-        <div class="trend-chip ${hot ? "hot" : ""}">
-          <strong>${row.symbol}</strong>
-          <span>heat ${Number(row.heat || 0).toFixed(2)} · buzz ${row.buzz || 0}</span>
-        </div>
-      `;
-    })
-    .join("");
-}
-
 function renderFeedHealth(health, source) {
   const label = document.getElementById("feed-source-label");
-  if (!label) return;
   const tickAge = document.getElementById("feed-tick-age");
   const staleLabel = document.getElementById("feed-stale-label");
   const feedSource = source || health.source || "—";
@@ -327,12 +297,9 @@ function renderFeedHealth(health, source) {
   label.className = `feed-source ${closed ? "stale" : online || delayed ? "buy" : "stale"}`;
   const age = health.last_tick_age_ms;
   const threshold = staleThresholdMs(feedSource, health);
-  if (tickAge) {
-    tickAge.textContent = age == null ? "—" : `${age}ms`;
-    tickAge.className = age != null && age > threshold ? "sell" : "buy";
-  }
+  tickAge.textContent = age == null ? "—" : `${age}ms`;
+  tickAge.className = age != null && age > threshold ? "sell" : "buy";
   const stale = health.stale_symbols || [];
-  if (!staleLabel) return;
   if (closed) {
     staleLabel.textContent = "Session closed — prices are last available";
     staleLabel.className = "muted";
@@ -377,7 +344,6 @@ function bucketMoney(amount) {
 
 function renderCapital(capital) {
   const target = document.getElementById("capital-bars");
-  if (!target) return;
   const totalLabel = document.getElementById("capital-total");
   if (!capital.total) {
     if (lastCapitalKey !== "loading") {
@@ -458,14 +424,9 @@ function renderTicker(quotes, regimes) {
   }
 }
 
-function renderQuotes(quotes, regimes, sentiment) {
+function renderQuotes(quotes, regimes, indicators) {
   const tbody = document.getElementById("quotes-body");
-  if (!tbody) return;
-  const activeSet = new Set(sentiment?.active_trading_symbols || lastPayload?.active_trading_symbols || []);
-  const sentimentSymbols = sentiment?.symbols || {};
-  const items = Object.values(quotes)
-    .filter((q) => !activeSet.size || activeSet.has(q.symbol))
-    .sort((a, b) => a.symbol.localeCompare(b.symbol));
+  const items = Object.values(quotes).sort((a, b) => a.symbol.localeCompare(b.symbol));
   const active = new Set();
 
   for (const quote of items) {
@@ -476,8 +437,10 @@ function renderQuotes(quotes, regimes, sentiment) {
       row.innerHTML = `
         <td><strong class="sym"></strong></td>
         <td class="mono ltp"></td>
-        <td class="mono heat"></td>
         <td><span class="regime-pill regime"></span></td>
+        <td class="mono adx"></td>
+        <td class="mono spread"></td>
+        <td class="mono age"></td>
       `;
       tbody.appendChild(row);
       quoteRows.set(quote.symbol, row);
@@ -490,17 +453,21 @@ function renderQuotes(quotes, regimes, sentiment) {
     seenPrices.set(`table-${quote.symbol}`, quote.ltp);
 
     const regime = regimes[quote.symbol] || "UNKNOWN";
-    const buzzRow = sentimentSymbols[quote.symbol] || {};
-    const heat = Number(buzzRow.trending_score ?? 0);
+    const adx = indicators[quote.symbol]?.adx_14;
+    const threshold = staleThresholdMs(lastPayload?.source, lastPayload?.feed_health);
+    const ageMs = quoteAgeMs(quote);
+    const ageClass = ageMs > threshold ? "stale" : "";
 
     row.querySelector(".sym").textContent = quote.symbol;
     row.querySelector(".ltp").textContent = fmt.format(quote.ltp);
-    const heatEl = row.querySelector(".heat");
-    heatEl.textContent = heat.toFixed(2);
-    heatEl.className = `mono heat ${heat >= 0.35 ? "buy" : heat >= 0.12 ? "stale" : ""}`;
     const regimeEl = row.querySelector(".regime");
     regimeEl.textContent = regime;
     regimeEl.className = `regime-pill regime ${regime}`;
+    row.querySelector(".adx").textContent = typeof adx === "number" ? fmt.format(adx) : "—";
+    row.querySelector(".spread").textContent = quote.spread_bps === null ? "—" : fmt.format(quote.spread_bps);
+    const ageEl = row.querySelector(".age");
+    ageEl.textContent = `${ageMs}ms`;
+    ageEl.className = `mono age ${ageClass}`;
   }
 
   for (const [symbol, row] of quoteRows) {
@@ -795,8 +762,20 @@ function renderSentiment(sentiment) {
 function renderEdgeSentiment(sentiment, activeSymbols) {
   const target = document.getElementById("edge-sentiment");
   if (!target) return;
-  const active = (activeSymbols || sentiment.active_trading_symbols || []).join(", ") || "—";
-  target.textContent = `Trading ${active} · ${sentiment.headline || "Scanning buzz…"}`;
+  const l30 = sentiment.last30days_available
+    ? `<a href="${sentiment.last30days_repo_url || "https://github.com/mvanhorn/last30days-skill"}" target="_blank" rel="noopener">${sentiment.last30days_engine_label || "last30days-skill"}</a>`
+    : "last30days not installed";
+  const trading = (activeSymbols || sentiment.active_trading_symbols || []).join(", ") || "—";
+  const leaders = (sentiment.trending_leaders || [])
+    .slice(0, 4)
+    .map((row) => `${row.symbol}(${Number(row.heat || 0).toFixed(2)})`)
+    .join(" · ");
+  target.innerHTML = `
+    Buzz · <strong class="${sentiment.status === "halt" ? "sell" : sentiment.status === "elevated" ? "stale" : "buy"}">${humanStatus(sentiment.status)}</strong>
+    · Trading: ${trading}
+    ${leaders ? `· Hot: ${leaders}` : ""}
+    · ${l30}
+  `;
 }
 
 function renderSidebarSentiment(sentiment) {
@@ -836,7 +815,9 @@ function renderSentimentInto(panelId, badgeId, sourcesId, sentiment, options = {
   }
 
   const symbols = sentiment.symbols || {};
-  const entries = Object.entries(symbols).sort((a, b) => Number(a[1].score) - Number(b[1].score));
+  const entries = Object.entries(symbols).sort(
+    (a, b) => Number(b[1].trending_score || 0) - Number(a[1].trending_score || 0),
+  );
   if (!entries.length) {
     target.classList.add("empty-state");
     target.innerHTML = `<span>${sentiment.headline || "Waiting for first sentiment refresh…"}</span>`;
@@ -853,17 +834,19 @@ function renderSentimentInto(panelId, badgeId, sourcesId, sentiment, options = {
     <div class="table-wrap">
       <table class="data-table compact">
         <thead>
-          <tr><th>Symbol</th><th>Score</th><th>Buzz</th><th>Status</th><th>Action</th>${options.compact ? "" : "<th>Top signal</th>"}</tr>
+          <tr><th>Symbol</th><th>Heat</th><th>Score</th><th>Buzz</th><th>Status</th><th>Action</th>${options.compact ? "" : "<th>Top signal</th>"}</tr>
         </thead>
         <tbody>
           ${limited
             .map(([symbol, row]) => {
               const top = (row.top_items || [])[0];
               const score = Number(row.score || 0);
+              const heat = Number(row.trending_score || 0);
               const scoreKlass = score <= -0.55 ? "sell" : score <= -0.25 ? "stale" : "buy";
               return `
                 <tr>
                   <td><strong>${symbol}</strong></td>
+                  <td class="mono ${heat >= 0.35 ? "buy" : heat >= 0.12 ? "stale" : ""}">${heat.toFixed(2)}</td>
                   <td class="mono ${scoreKlass}">${score.toFixed(2)}</td>
                   <td class="mono">${row.buzz_volume || 0}</td>
                   <td>${row.status || "clear"}</td>
