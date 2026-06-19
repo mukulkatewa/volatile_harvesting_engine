@@ -7,7 +7,7 @@ def test_load_platform_config_reads_yaml(project_root) -> None:
     assert config.live.capital_cap_inr == 25_000
     assert config.strategies.pair.symbol_a == "RELIANCE"
     assert config.strategies.capital.grid_bucket_pct == 0.70
-    assert config.strategies.grid.seed_deploy_pct == 0.0
+    assert config.strategies.grid.seed_deploy_pct == 0.12
     assert config.strategies.grid.min_spacing_pct == 0.004
 
 

@@ -24,3 +24,8 @@ momentum_min_score: -0.15
 # Risk overlays
 reduce_size_multiplier: 0.5
 widen_spacing_multiplier: 1.35
+
+# Trending → trading universe (top N by buzz heat)
+trending_min_heat: 0.05
+seed_deploy_min_heat: 0.12
+max_trading_symbols: 8

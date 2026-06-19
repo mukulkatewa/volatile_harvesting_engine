@@ -34,6 +34,7 @@ class SentimentEngine:
                 continue
         if extra_items:
             items.extend(extra_items)
+        items = filter_buzz_items(items)
         return self.score_items(symbol, items)
 
     def score_items(self, symbol: str, items: list[BuzzItem]) -> tuple[SymbolSentiment, list[BuzzItem]]:

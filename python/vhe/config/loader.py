@@ -39,6 +39,7 @@ class PaperTradingConfig(BaseModel):
     fill_full_quantity: bool = False
     resting_grid_enabled: bool = True
     use_bar_low_for_fills: bool = True
+    resting_proximity_bps: float = 0.0
 
 
 class StorageConfig(BaseModel):

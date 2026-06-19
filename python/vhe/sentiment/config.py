@@ -26,6 +26,9 @@ class SentimentYamlConfig(BaseModel):
     momentum_min_score: float = -0.15
     reduce_size_multiplier: float = 0.5
     widen_spacing_multiplier: float = 1.35
+    trending_min_heat: float = 0.05
+    seed_deploy_min_heat: float = 0.12
+    max_trading_symbols: int = 8
     last30days_search_sources: str = "reddit,hackernews,web"
     last30days_symbols_per_refresh: int = 2
     last30days_timeout_seconds: float = 90.0
@@ -56,4 +59,7 @@ class SentimentYamlConfig(BaseModel):
             momentum_min_score=self.momentum_min_score,
             reduce_size_multiplier=self.reduce_size_multiplier,
             widen_spacing_multiplier=self.widen_spacing_multiplier,
+            trending_min_heat=self.trending_min_heat,
+            seed_deploy_min_heat=self.seed_deploy_min_heat,
+            max_trading_symbols=self.max_trading_symbols,
         )

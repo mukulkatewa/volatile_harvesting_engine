@@ -30,6 +30,7 @@ class DynamicGridInputs:
     regime: MarketRegime
     current_quantity: int = 0
     sentiment_spacing_multiplier: float = 1.0
+    seed_deploy_allowed: bool = True
 
 
 @dataclass(slots=True)
@@ -118,7 +119,9 @@ class DynamicGridStrategy:
             reset_reason=reset_reason,
         )
 
-    def orders_from_plan(self, plan: DynamicGridPlan, quote: LiveQuote, *, current_quantity: int = 0) -> list[Order]:
+    def orders_from_plan(
+        self, plan: DynamicGridPlan, quote: LiveQuote, *, current_quantity: int = 0, seed_deploy_allowed: bool = True
+    ) -> list[Order]:
         if (
             self.config.force_exit_time is not None
             and _quote_local_time(quote) >= self.config.force_exit_time
@@ -142,6 +145,7 @@ class DynamicGridStrategy:
 
         if (
             self.config.seed_deploy_pct > 0
+            and seed_deploy_allowed
             and current_quantity == 0
             and plan.buy_levels
             and plan.regime == MarketRegime.RANGE

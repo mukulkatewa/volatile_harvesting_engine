@@ -157,7 +157,7 @@ class StrategyOrchestrator:
             if order.side != OrderSide.BUY:
                 adjusted.append(order)
                 continue
-            multiplier = self.sentiment_service.size_multiplier(order.symbol)
+            multiplier = self.sentiment_service.size_multiplier_for(order.symbol)
             if multiplier >= 0.999:
                 adjusted.append(order)
                 continue
@@ -184,16 +184,48 @@ class StrategyOrchestrator:
         position = self.paper_broker.positions.get(symbol)
         return position.quantity if position else 0
 
+    def _update_trading_universe(self) -> list[str]:
+        if self.sentiment_service is None:
+            universe = [
+                symbol
+                for symbol in self.config.strategies.feed.symbols
+                if not self.is_pair_symbol(symbol)
+            ][: self.config.live.max_symbols]
+        else:
+            universe = self.sentiment_service.trading_universe(
+                self.config.live.max_symbols,
+                regime_by_symbol=self.state.regimes,
+            )
+        held = [
+            symbol
+            for symbol, position in self.paper_broker.positions.items()
+            if position.quantity > 0 and not self.is_pair_symbol(symbol)
+        ]
+        for symbol in held:
+            if symbol not in universe:
+                universe.append(symbol)
+        self.state.active_trading_symbols = universe[: self.config.live.max_symbols + len(held)]
+        return self.state.active_trading_symbols
+
+    def _grid_symbol_active(self, symbol: str) -> bool:
+        if self.is_pair_symbol(symbol):
+            return False
+        if self.single_name_quantity(symbol) > 0:
+            return True
+        return symbol in getattr(self.state, "active_trading_symbols", [])
+
     def build_plans(self, quote: LiveQuote, snapshot: IndicatorSnapshot, regime: MarketRegime) -> tuple[DynamicGridPlan, MomentumPlan]:
         spacing_mult = 1.0
         sentiment_score = 0.0
         sentiment_allows = True
+        seed_allowed = True
         if self.sentiment_service is not None:
             spacing_mult = self.sentiment_service.spacing_multiplier(quote.symbol)
             row = self.sentiment_service.symbol(quote.symbol)
             if row is not None:
                 sentiment_score = row.score
             sentiment_allows = self.sentiment_service.momentum_allowed(quote.symbol)
+            seed_allowed = self.sentiment_service.seed_deploy_allowed(quote.symbol)
 
         grid_plan = self.grid_strategy.build_plan(
             DynamicGridInputs(
@@ -203,6 +235,7 @@ class StrategyOrchestrator:
                 regime=regime,
                 current_quantity=self.single_name_quantity(quote.symbol),
                 sentiment_spacing_multiplier=spacing_mult,
+                seed_deploy_allowed=seed_allowed and self._grid_symbol_active(quote.symbol),
             )
         )
         momentum_plan = self.momentum_strategy.build_plan(
@@ -249,6 +282,7 @@ class StrategyOrchestrator:
         session_phase: SessionPhase | None = None,
     ) -> None:
         self._refresh_grid_capital()
+        self._update_trading_universe()
         grid_plan, momentum_plan = self.build_plans(quote, snapshot, regime)
         self.state.quotes[quote.symbol] = quote
         self.state.plans[quote.symbol] = grid_plan
@@ -274,9 +308,17 @@ class StrategyOrchestrator:
         single_name_orders: list[Order] = []
         if not self.is_pair_symbol(quote.symbol):
             current_qty = self.single_name_quantity(quote.symbol)
-            if force_exit_only or trading_open:
-                single_name_orders = self.grid_strategy.orders_from_plan(grid_plan, quote, current_quantity=current_qty)
-            if trading_open:
+            grid_active = self._grid_symbol_active(quote.symbol)
+            if force_exit_only or (trading_open and grid_active):
+                single_name_orders = self.grid_strategy.orders_from_plan(
+                    grid_plan,
+                    quote,
+                    current_quantity=current_qty,
+                    seed_deploy_allowed=seed_allowed and self._grid_symbol_active(quote.symbol),
+                )
+            elif trading_open and not grid_active:
+                self.execution.cancel_resting_except(quote.symbol, set())
+            if trading_open and grid_active:
                 single_name_orders.extend(self.momentum_strategy.orders_from_plan(momentum_plan, quote))
 
         single_name_orders = _filter_orders_for_session(single_name_orders, session_phase)
@@ -284,7 +326,7 @@ class StrategyOrchestrator:
         single_name_orders = self._filter_grid_churn(single_name_orders)
         single_name_orders = self._apply_sentiment_sizing(single_name_orders)
 
-        if self._resting_grid_enabled() and not self.is_pair_symbol(quote.symbol):
+        if self._resting_grid_enabled() and not self.is_pair_symbol(quote.symbol) and self._grid_symbol_active(quote.symbol):
             single_name_orders = [
                 order
                 for order in single_name_orders

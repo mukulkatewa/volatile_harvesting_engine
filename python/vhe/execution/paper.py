@@ -32,6 +32,7 @@ class PaperBroker:
     limit_tolerance_bps: float = 25.0
     fill_full_quantity: bool = False
     use_bar_low_for_fills: bool = True
+    resting_proximity_bps: float = 0.0
     cash: float = field(init=False)
     positions: dict[str, PaperPosition] = field(default_factory=dict)
     fills: list[Fill] = field(default_factory=list)
@@ -199,6 +200,10 @@ class PaperBroker:
                 touch = min(quote.ltp, quote.low)
             if touch <= order.price:
                 return True
+            if resting and self.resting_proximity_bps > 0:
+                proximity = order.price * (1 + self.resting_proximity_bps / 10_000)
+                if touch <= proximity:
+                    return True
             if not self.aggressive_fills:
                 return False
             tolerance = order.price * (1 + self.limit_tolerance_bps / 10_000)

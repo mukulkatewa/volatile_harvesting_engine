@@ -11,6 +11,7 @@ from vhe.sentiment.engine import SentimentEngine
 from vhe.sentiment.models import SentimentAction, SentimentSnapshot, SentimentStatus, SymbolSentiment
 from vhe.sentiment.scoring import portfolio_snapshot
 from vhe.sentiment.store import SentimentStore
+from vhe.sentiment.trending import rank_symbols
 from vhe.storage.db import PlatformDatabase
 
 
@@ -32,6 +33,9 @@ class SentimentConfig:
     momentum_min_score: float = -0.15
     reduce_size_multiplier: float = 0.5
     widen_spacing_multiplier: float = 1.35
+    trending_min_heat: float = 0.05
+    seed_deploy_min_heat: float = 0.12
+    max_trading_symbols: int = 8
 
 
 LAST30DAYS_REPO_URL = "https://github.com/mvanhorn/last30days-skill"
@@ -191,8 +195,48 @@ class SentimentService:
             return True
         return row.score >= self.config.momentum_min_score
 
+    def trending_ranked(self) -> list[tuple[str, float, SymbolSentiment]]:
+        return rank_symbols(self._symbols, min_heat=self.config.trending_min_heat)
+
+    def trending_leaders(self, limit: int = 8) -> list[str]:
+        return [symbol for symbol, _, _ in self.trending_ranked()[:limit]]
+
+    def trading_universe(self, max_symbols: int, *, regime_by_symbol: dict[str, str] | None = None) -> list[str]:
+        ranked = self.trending_ranked()
+        hot = [symbol for symbol, heat, _ in ranked if heat >= self.config.trending_min_heat][:max_symbols]
+        if hot:
+            return hot
+        if regime_by_symbol:
+            fallback = [
+                symbol
+                for symbol in self.symbols
+                if regime_by_symbol.get(symbol) == "RANGE" and self.allows_buy(symbol)
+            ]
+            if fallback:
+                return fallback[:max_symbols]
+        return self.symbols[:max_symbols]
+
+    def seed_deploy_allowed(self, symbol: str) -> bool:
+        row = self.symbol(symbol)
+        if row is None or row.action == SentimentAction.HALT:
+            return False
+        return row.trending_score >= self.config.seed_deploy_min_heat or row.buzz_volume >= 3
+
+    def size_multiplier_for(self, ticker: str) -> float:
+        row = self.symbol(ticker)
+        if row is None:
+            return 1.0
+        base = row.size_multiplier
+        if row.trending_score >= 0.35:
+            return min(base * 1.25, 1.25)
+        return base
+
     def to_public_dict(self) -> dict:
         snap = self.snapshot()
+        leaders = [
+            {"symbol": symbol, "heat": heat, "score": row.score, "buzz": row.buzz_volume}
+            for symbol, heat, row in self.trending_ranked()[:8]
+        ]
         return {
             "status": snap.status.value,
             "headline": snap.headline,
@@ -200,6 +244,8 @@ class SentimentService:
             "symbols_flagged": list(snap.symbols_flagged),
             "last_refresh_at": snap.last_refresh_at.isoformat() if snap.last_refresh_at else None,
             "sources_active": list(snap.sources_active),
+            "trending_leaders": leaders,
+            "active_trading_symbols": self.trading_universe(self.config.max_trading_symbols),
             "last30days_available": self._last30days_collector is not None,
             "last30days_repo_url": LAST30DAYS_REPO_URL,
             "last30days_engine_path": str(self._last30days_collector.engine_path) if self._last30days_collector else None,
@@ -210,6 +256,7 @@ class SentimentService:
                 symbol: {
                     "score": row.score,
                     "buzz_volume": row.buzz_volume,
+                    "trending_score": row.trending_score,
                     "status": row.status.value,
                     "action": row.action.value,
                     "headline": row.headline,

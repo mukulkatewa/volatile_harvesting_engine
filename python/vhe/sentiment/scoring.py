@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timezone
 
 from vhe.sentiment.models import BuzzItem, SentimentAction, SentimentStatus, SymbolSentiment
+from vhe.sentiment.trending import engagement_total, filter_buzz_items, trending_heat
 
 _POSITIVE = (
     "upgrade",
@@ -125,6 +126,13 @@ def aggregate_symbol_score(
         spacing_multiplier = 1.0
 
     top_items = tuple(sorted(items, key=lambda item: item.engagement, reverse=True)[:5])
+    heat = trending_heat(
+        buzz_volume=buzz_volume,
+        score=score,
+        engagement_total=engagement_total(items),
+    )
+    if buzz_volume > 0 and score >= 0:
+        headline = f"Trending buzz ({buzz_volume} signals, heat {heat:.2f})"
     return SymbolSentiment(
         symbol=symbol,
         score=round(score, 3),
@@ -134,6 +142,7 @@ def aggregate_symbol_score(
         headline=headline,
         size_multiplier=size_multiplier,
         spacing_multiplier=spacing_multiplier,
+        trending_score=heat,
         sources=sources,
         top_items=top_items,
     )

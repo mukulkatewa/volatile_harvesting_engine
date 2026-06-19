@@ -15,7 +15,11 @@ SYMBOL_ALIASES: dict[str, tuple[str, ...]] = {
     "LT": ("LT", "Larsen Toubro", "L&T stock"),
     "KOTAKBANK": ("KOTAKBANK", "Kotak Bank"),
     "BEL": ("BEL", "Bharat Electronics"),
-    "TMPV": ("TMPV", "Tata Motors PV", "Tata Motors"),
+    "WIPRO": ("WIPRO", "Wipro", "Wipro stock"),
+    "HCLTECH": ("HCLTECH", "HCL Tech", "HCL Technologies"),
+    "AXISBANK": ("AXISBANK", "Axis Bank", "Axis bank stock"),
+    "MARUTI": ("MARUTI", "Maruti Suzuki", "Maruti stock"),
+    "SUNPHARMA": ("SUNPHARMA", "Sun Pharma", "Sun Pharmaceutical"),
     "TATAMOTORS": ("TATAMOTORS", "Tata Motors"),
 }
 

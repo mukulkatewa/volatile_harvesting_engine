@@ -41,6 +41,7 @@ class PlatformState:
     paper_stats: dict = field(default_factory=dict)
     sentiment: dict = field(default_factory=dict)
     strategy_status: dict = field(default_factory=dict)
+    active_trading_symbols: list[str] = field(default_factory=list)
     execution_orders: list[dict] = field(default_factory=list)
     reconciliation: dict = field(default_factory=dict)
     source: str = "simulated"
@@ -75,6 +76,7 @@ class PlatformState:
             "paper_stats": _json_ready(self.paper_stats),
             "sentiment": _json_ready(self.sentiment),
             "strategy_status": _json_ready(self.strategy_status),
+            "active_trading_symbols": list(self.active_trading_symbols),
             "execution_orders": _json_ready(self.execution_orders),
             "reconciliation": _json_ready(self.reconciliation),
         }

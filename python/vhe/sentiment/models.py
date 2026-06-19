@@ -40,6 +40,7 @@ class SymbolSentiment:
     headline: str
     size_multiplier: float
     spacing_multiplier: float
+    trending_score: float = 0.0
     sources: dict[str, int] = field(default_factory=dict)
     top_items: tuple[BuzzItem, ...] = ()
 

@@ -2,7 +2,7 @@
 # Use Kite Personal API token only when you switch to live orders (no live quotes on free plan).
 mode: paper
 capital_cap_inr: 75000
-max_symbols: 5
+max_symbols: 8
 max_grid_levels: 5
 force_exit_time: "15:10"
 config_dir: configs
@@ -23,6 +23,7 @@ paper:
   fill_full_quantity: false
   resting_grid_enabled: true
   use_bar_low_for_fills: false
+  resting_proximity_bps: 30.0
 
 risk:
   reserve_capital_pct: 0.10
