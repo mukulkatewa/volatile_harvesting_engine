@@ -21,6 +21,8 @@ paper:
   aggressive_fills: false
   limit_tolerance_bps: 10
   fill_full_quantity: false
+  resting_grid_enabled: true
+  use_bar_low_for_fills: true
 
 risk:
   reserve_capital_pct: 0.10

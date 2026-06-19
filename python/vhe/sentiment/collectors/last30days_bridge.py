@@ -11,7 +11,7 @@ from pathlib import Path
 from vhe.sentiment.collectors.base import BuzzCollector
 from vhe.sentiment.models import BuzzItem
 from vhe.sentiment.scoring import lexicon_score
-from vhe.sentiment.symbols import search_queries
+from vhe.sentiment.symbols import match_symbol, search_queries
 
 
 class Last30DaysCollector(BuzzCollector):
@@ -128,6 +128,9 @@ def _parse_last30days_report(payload: dict, symbol: str) -> list[BuzzItem]:
         title = str(candidate.get("title") or "").strip()
         if not title:
             continue
+        snippet = str(candidate.get("snippet") or "")
+        if not match_symbol(f"{title} {snippet}", symbol):
+            continue
         key = title.lower()
         if key in seen:
             continue
@@ -166,6 +169,8 @@ def _parse_last30days_report(payload: dict, symbol: str) -> list[BuzzItem]:
                 continue
             seen.add(key)
             body = str(row.get("body") or row.get("snippet") or "")
+            if not match_symbol(f"{title} {body}", symbol):
+                continue
             engagement = _engagement_value(row.get("engagement"))
             if engagement <= 0:
                 engagement = float(row.get("engagement_score") or row.get("local_rank_score") or 1.0)

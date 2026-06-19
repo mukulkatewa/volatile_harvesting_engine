@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 # NSE tickers → search aliases for social/news matching.
 SYMBOL_ALIASES: dict[str, tuple[str, ...]] = {
     "RELIANCE": ("RELIANCE", "Reliance Industries", "RIL", "Reliance stock"),
@@ -24,12 +26,18 @@ def search_queries(symbol: str) -> list[str]:
     return [
         f"{primary} NSE India stock",
         f"{primary} stock India",
+        f"subreddit:IndiaInvestments {primary}",
+        f"subreddit:IndianStreetBets {primary}",
     ]
 
 
 def match_symbol(text: str, symbol: str) -> bool:
     lowered = text.lower()
     for alias in SYMBOL_ALIASES.get(symbol, (symbol,)):
-        if alias.lower() in lowered:
+        alias_lower = alias.lower()
+        if len(alias_lower) <= 4:
+            if re.search(rf"\b{re.escape(alias_lower)}\b", lowered):
+                return True
+        elif alias_lower in lowered:
             return True
     return False

@@ -104,6 +104,45 @@ class StrategyOrchestrator:
             allowed.append(order)
         return allowed
 
+    def _resting_grid_enabled(self) -> bool:
+        return self.config.live.mode == "paper" and self.config.live.paper.resting_grid_enabled
+
+    def _sync_grid_resting_orders(self, plan: DynamicGridPlan, quote: LiveQuote, *, current_quantity: int) -> None:
+        if not self._resting_grid_enabled():
+            return
+
+        desired = self.grid_strategy.resting_buy_orders_from_plan(plan, quote, current_quantity=current_quantity)
+        desired = self._apply_sentiment_sizing(desired)
+        keep_ids: set[str] = set()
+
+        for order in desired:
+            if order.side == OrderSide.BUY:
+                count = self._symbol_grid_fills.get(order.symbol, 0)
+                if count >= self._max_grid_fills_per_symbol():
+                    continue
+
+            decision = self.risk_guard.evaluate(order, self.state.portfolio)
+            if not decision.approved:
+                continue
+
+            if self.execution.place_resting(order):
+                keep_ids.add(order.order_id)
+
+        self.execution.cancel_resting_except(quote.symbol, keep_ids)
+
+    def _process_resting_fills(self) -> list[Fill]:
+        if not self._resting_grid_enabled() or not self.state.quotes:
+            return []
+
+        fills = self.execution.process_resting(self.state.quotes)
+        for fill in fills:
+            self.state.controls.last_risk_reject = None
+            self.state.portfolio = self._enrich_portfolio(self.execution.snapshot_portfolio(self.state.quotes))
+            self._log_event(event("fill", f"{fill.side.value} {fill.symbol} x{fill.quantity} @ {fill.price:.2f} (resting)"))
+            self._persist_fill(fill)
+            self._after_fill(fill)
+        return fills
+
     def _after_fill(self, fill: Fill) -> None:
         if fill.reason and fill.reason.startswith("dynamic_grid") and fill.side == OrderSide.BUY:
             self._symbol_grid_fills[fill.symbol] = self._symbol_grid_fills.get(fill.symbol, 0) + 1
@@ -245,10 +284,19 @@ class StrategyOrchestrator:
         single_name_orders = self._filter_grid_churn(single_name_orders)
         single_name_orders = self._apply_sentiment_sizing(single_name_orders)
 
+        if self._resting_grid_enabled() and not self.is_pair_symbol(quote.symbol):
+            single_name_orders = [
+                order
+                for order in single_name_orders
+                if not (order.reason or "").startswith("dynamic_grid_level_")
+            ]
+            self._sync_grid_resting_orders(grid_plan, quote, current_quantity=self.single_name_quantity(quote.symbol))
+
         single_name_fills = self._submit_orders(single_name_orders)
+        resting_fills = self._process_resting_fills()
         pair_fills = self._submit_pair_orders_atomic(pair_orders)
         self.state.orders.extend(single_name_orders + pair_orders)
-        self.state.fills.extend(single_name_fills + pair_fills)
+        self.state.fills.extend(single_name_fills + resting_fills + pair_fills)
         self.state.portfolio = self._enrich_portfolio(self.execution.snapshot_portfolio(self.state.quotes))
         self.state.capital = self.capital_allocator.buckets_snapshot()
         self.state.execution_orders = self.execution.orders_snapshot()
@@ -307,10 +355,16 @@ class StrategyOrchestrator:
             row = self.sentiment_service.symbol(grid_plan.symbol)
             if row is not None and row.status.value != "clear":
                 sentiment_note = f" · sentiment {row.status.value}"
+        resting_for_symbol = sum(
+            1 for order in self.paper_broker.resting_orders.values() if order.symbol == grid_plan.symbol
+        )
+        grid_status = "WAITING"
+        if grid_plan.buy_levels:
+            grid_status = f"ARMED({resting_for_symbol})" if resting_for_symbol else "ACTIVE"
         status = {
             "regime": regime.value,
             "regime_summary": self._regime_summary(),
-            "grid": "ACTIVE" if grid_plan.buy_levels else "WAITING",
+            "grid": grid_status,
             "momentum": "ARMED" if momentum_plan.enabled else "OFF",
             "pair": pair_plan.action if pair_plan else "WAITING",
             "edge": _edge_note(regime, session_phase) + sentiment_note,

@@ -206,6 +206,54 @@ class DynamicGridStrategy:
 
         return orders
 
+    def resting_buy_orders_from_plan(
+        self, plan: DynamicGridPlan, quote: LiveQuote, *, current_quantity: int = 0
+    ) -> list[Order]:
+        if plan.regime != MarketRegime.RANGE or not plan.buy_levels:
+            return []
+
+        orders: list[Order] = []
+        level_capital = (self.config.symbol_capital / self.config.max_levels) * self.config.level_capital_multiplier
+        filled = self._filled_levels.setdefault(plan.symbol, set())
+
+        for level_index, price in enumerate(plan.buy_levels, start=1):
+            if level_index in filled:
+                continue
+            quantity = max(int(level_capital // price), 1)
+            orders.append(
+                self._resting_order(
+                    quote.timestamp,
+                    quote.symbol,
+                    OrderSide.BUY,
+                    price,
+                    quantity,
+                    f"dynamic_grid_level_{level_index}",
+                    level_index,
+                )
+            )
+        return orders
+
+    def _resting_order(
+        self,
+        timestamp: datetime,
+        symbol: str,
+        side: OrderSide,
+        price: float,
+        quantity: int,
+        reason: str,
+        level_index: int,
+    ) -> Order:
+        return Order(
+            order_id=f"dg-{symbol}-L{level_index}",
+            symbol=symbol,
+            side=side,
+            order_type=OrderType.LIMIT,
+            price=price,
+            quantity=quantity,
+            created_at=timestamp,
+            reason=reason,
+        )
+
     def _reset_reason(self, *, symbol: str, fair_value: float, spacing: float) -> str | None:
         previous = self._last_grid_center.get(symbol)
         if previous is None:

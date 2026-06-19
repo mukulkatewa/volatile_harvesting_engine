@@ -37,6 +37,8 @@ class PaperTradingConfig(BaseModel):
     aggressive_fills: bool = False
     limit_tolerance_bps: float = 25.0
     fill_full_quantity: bool = False
+    resting_grid_enabled: bool = True
+    use_bar_low_for_fills: bool = True
 
 
 class StorageConfig(BaseModel):

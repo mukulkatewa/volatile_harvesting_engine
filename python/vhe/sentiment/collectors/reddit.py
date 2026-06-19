@@ -20,7 +20,7 @@ class RedditCollector(BuzzCollector):
     def collect(self, symbol: str) -> list[BuzzItem]:
         items: list[BuzzItem] = []
         headers = {"User-Agent": "vhe-sentiment/1.0 (research; +https://github.com/vhe)"}
-        for query in search_queries(symbol)[:1]:
+        for query in search_queries(symbol)[:2]:
             url = "https://www.reddit.com/search.json"
             params = {"q": query, "sort": "new", "limit": str(self.max_items), "t": "month"}
             try:

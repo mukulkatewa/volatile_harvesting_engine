@@ -34,6 +34,9 @@ class SentimentConfig:
     widen_spacing_multiplier: float = 1.35
 
 
+LAST30DAYS_REPO_URL = "https://github.com/mvanhorn/last30days-skill"
+
+
 @dataclass(slots=True)
 class SentimentService:
     config: SentimentConfig
@@ -189,7 +192,9 @@ class SentimentService:
             "last_refresh_at": snap.last_refresh_at.isoformat() if snap.last_refresh_at else None,
             "sources_active": list(snap.sources_active),
             "last30days_available": self._last30days_collector is not None,
+            "last30days_repo_url": LAST30DAYS_REPO_URL,
             "last30days_engine_path": str(self._last30days_collector.engine_path) if self._last30days_collector else None,
+            "last30days_engine_label": "mvanhorn/last30days-skill",
             "integration_plan": list(snap.integration_plan),
             "symbols": {
                 symbol: {

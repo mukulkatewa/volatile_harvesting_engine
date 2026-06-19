@@ -140,6 +140,7 @@ class PlatformRuntime:
             aggressive_fills=paper.aggressive_fills,
             limit_tolerance_bps=paper.limit_tolerance_bps,
             fill_full_quantity=paper.fill_full_quantity,
+            use_bar_low_for_fills=paper.use_bar_low_for_fills,
         )
 
     def _restore_persisted_events(self) -> None:

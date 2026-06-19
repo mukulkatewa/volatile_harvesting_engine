@@ -136,6 +136,19 @@ body::before {
   font-family: var(--mono);
 }
 
+.meta-row strong.buy { color: var(--green); }
+.meta-row strong.sell { color: var(--red); }
+.meta-row strong.stale { color: var(--amber); }
+
+.meta-link a {
+  color: var(--blue);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.meta-link a:hover { text-decoration: underline; }
+
 .main {
   padding: 18px 22px 28px;
   min-width: 0;
@@ -541,6 +554,34 @@ body::before {
   align-items: baseline;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.engine-badge {
+  padding: 0 16px 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.engine-badge a { color: var(--blue); }
+.engine-badge code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.sentiment-terminal-section,
+.pending-section {
+  margin-bottom: 16px;
+}
+
+.compact-note {
+  padding: 8px 16px 0;
+  font-size: 12px;
+}
+
+.empty-row {
+  text-align: center;
+  padding: 18px !important;
 }
 
 .card-head .ctrl-btn.small {

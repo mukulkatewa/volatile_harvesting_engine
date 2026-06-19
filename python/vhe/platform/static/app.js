@@ -19,6 +19,7 @@ const controls = [
   ["demo-fill-button", "/api/control/demo-fill"],
   ["reset-paper-button", "/api/control/reset-paper"],
   ["sentiment-refresh-button", "/api/sentiment/refresh"],
+  ["terminal-sentiment-refresh", "/api/sentiment/refresh"],
 ];
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -96,14 +97,18 @@ function render(payload) {
   renderMarketSession(payload.market_session || {});
   renderBars(payload.bars || {});
   renderTicker(payload.quotes || {}, payload.regimes || {});
-  renderQuotes(payload.quotes || {}, payload.regimes || {}, payload.indicators || {});
+  renderQuotes(payload.quotes || {}, payload.regimes || {}, payload.indicators || {}, payload.sentiment || payload.paper_stats?.sentiment || {});
   renderStrategies(payload.plans || {}, payload.momentum_plans || {}, payload.regimes || {});
   renderPairs(payload.pair_plans || {});
   renderPairTrades(payload.pair_trades || []);
   renderFills(payload.fills?.length ? payload.fills : payload.portfolio?.fills || []);
   renderPositions(portfolio.positions || []);
+  renderPendingOrders(payload.execution_orders || [], portfolio.resting_orders || []);
   renderPaperStats(payload.paper_stats || {});
-  renderSentiment(payload.sentiment || payload.paper_stats?.sentiment || {});
+  const sentiment = payload.sentiment || payload.paper_stats?.sentiment || {};
+  renderSentiment(sentiment);
+  renderTerminalSentiment(sentiment);
+  renderSidebarSentiment(sentiment);
   renderEvents(payload.events || []);
 }
 
@@ -412,10 +417,11 @@ function renderTicker(quotes, regimes) {
   }
 }
 
-function renderQuotes(quotes, regimes, indicators) {
+function renderQuotes(quotes, regimes, indicators, sentiment) {
   const tbody = document.getElementById("quotes-body");
   const items = Object.values(quotes).sort((a, b) => a.symbol.localeCompare(b.symbol));
   const active = new Set();
+  const sentimentSymbols = sentiment?.symbols || {};
 
   for (const quote of items) {
     active.add(quote.symbol);
@@ -427,6 +433,7 @@ function renderQuotes(quotes, regimes, indicators) {
         <td class="mono ltp"></td>
         <td><span class="regime-pill regime"></span></td>
         <td class="mono adx"></td>
+        <td class="mono buzz"></td>
         <td class="mono spread"></td>
         <td class="mono age"></td>
       `;
@@ -452,6 +459,13 @@ function renderQuotes(quotes, regimes, indicators) {
     regimeEl.textContent = regime;
     regimeEl.className = `regime-pill regime ${regime}`;
     row.querySelector(".adx").textContent = typeof adx === "number" ? fmt.format(adx) : "—";
+    const buzzRow = sentimentSymbols[quote.symbol];
+    const buzzEl = row.querySelector(".buzz");
+    if (buzzEl) {
+      const score = Number(buzzRow?.score || 0);
+      buzzEl.textContent = buzzRow ? `${score.toFixed(2)} / ${buzzRow.buzz_volume || 0}` : "—";
+      buzzEl.className = `mono buzz ${score <= -0.55 ? "sell" : score <= -0.25 ? "stale" : score > 0 ? "buy" : ""}`;
+    }
     row.querySelector(".spread").textContent = quote.spread_bps === null ? "—" : fmt.format(quote.spread_bps);
     const ageEl = row.querySelector(".age");
     ageEl.textContent = `${ageMs}ms`;
@@ -476,20 +490,24 @@ function renderCommandStrip(payload) {
   const unknownCount = summary.UNKNOWN || Object.values(regimes).filter((r) => r === "UNKNOWN").length;
   const trendCount = (summary.TREND_UP || 0) + (summary.TREND_DOWN || 0);
   const sentiment = payload.sentiment || payload.paper_stats?.sentiment || {};
+  const resting = (payload.portfolio?.resting_orders || []).length;
   const fills = (payload.fills || payload.portfolio?.fills || []).length;
   const session = payload.paper_stats?.current_session;
   const pnl = session?.total_pnl ?? (payload.portfolio?.equity || 0) - (payload.portfolio?.initial_cash || 0);
+  const l30Label = sentiment.last30days_engine_label || "last30days-skill";
+  const l30Status = sentiment.last30days_available ? "connected" : "missing";
 
   strip.innerHTML = `
     <span class="cmd-chip ${sentiment.status === "halt" ? "sell" : sentiment.status === "elevated" ? "stale" : "buy"}">
-      Sentiment · ${sentiment.status || "—"}${sentiment.last30days_available ? " · L30✓" : ""}
+      Sentiment · ${sentiment.status || "—"} · ${l30Label} ${sentiment.last30days_available ? "✓" : "✗"}
     </span>
     <span class="cmd-chip buy">RANGE ${rangeCount}</span>
     <span class="cmd-chip ${unknownCount ? "stale" : "muted"}">UNK ${unknownCount}</span>
     <span class="cmd-chip ${trendCount ? "on" : "muted"}">TREND ${trendCount}</span>
+    <span class="cmd-chip ${resting ? "on" : "muted"}">Resting ${resting}</span>
     <span class="cmd-chip">Fills ${fills}</span>
     <span class="cmd-chip ${Number(pnl) >= 0 ? "buy" : "sell"}">Session ${money.format(pnl || 0)}</span>
-    <span class="cmd-chip muted">${(sentiment.sources_active || []).join(" · ") || "no buzz sources"}</span>
+    <span class="cmd-chip muted">${(sentiment.sources_active || []).join(" · ") || "no buzz sources"} · L30 ${l30Status}</span>
   `;
 }
 
@@ -747,8 +765,49 @@ function renderPaperStats(stats) {
 }
 
 function renderSentiment(sentiment) {
-  const target = document.getElementById("sentiment-panel");
+  renderSentimentInto("sentiment-panel", "sentiment-engine-badge", "strategies-sentiment-sources", sentiment, { compact: false });
+}
+
+function renderTerminalSentiment(sentiment) {
+  renderSentimentInto("terminal-sentiment-panel", null, "terminal-sentiment-sources", sentiment, { compact: true, maxRows: 6 });
+}
+
+function renderSidebarSentiment(sentiment) {
+  const label = document.getElementById("sidebar-sentiment-label");
+  const link = document.getElementById("sidebar-l30-link");
+  if (label) {
+    const l30 = sentiment.last30days_available ? " · L30✓" : " · L30✗";
+    label.textContent = `${titleCase(sentiment.status || "—")}${l30}`;
+    label.className = sentiment.status === "halt" ? "sell" : sentiment.status === "elevated" ? "stale" : "buy";
+  }
+  if (link && sentiment.last30days_repo_url) {
+    link.href = sentiment.last30days_repo_url;
+    link.textContent = sentiment.last30days_engine_label || "last30days-skill";
+  }
+}
+
+function renderSentimentInto(panelId, badgeId, sourcesId, sentiment, options = {}) {
+  const target = document.getElementById(panelId);
   if (!target) return;
+
+  const sourcesEl = document.getElementById(sourcesId);
+  if (sourcesEl) {
+    const src = (sentiment.sources_active || []).join(" · ") || "reddit · hackernews · last30days";
+    sourcesEl.textContent = src;
+  }
+
+  const badge = badgeId ? document.getElementById(badgeId) : null;
+  if (badge) {
+    const repo = sentiment.last30days_repo_url || "https://github.com/mvanhorn/last30days-skill";
+    const path = sentiment.last30days_engine_path ? sentiment.last30days_engine_path.split("/").slice(-2).join("/") : "not installed";
+    const status = sentiment.last30days_available ? "connected" : "not found — clone to vendor/last30days-skill";
+    badge.innerHTML = `
+      Powered by <a href="${repo}" target="_blank" rel="noopener">${sentiment.last30days_engine_label || "mvanhorn/last30days-skill"}</a>
+      · ${status} · path: <code>${path}</code>
+      · refresh ${sentiment.last_refresh_at ? new Date(sentiment.last_refresh_at).toLocaleTimeString("en-IN") : "pending"}
+    `;
+  }
+
   const symbols = sentiment.symbols || {};
   const entries = Object.entries(symbols).sort((a, b) => Number(a[1].score) - Number(b[1].score));
   if (!entries.length) {
@@ -756,19 +815,21 @@ function renderSentiment(sentiment) {
     target.innerHTML = `<span>${sentiment.headline || "Waiting for first sentiment refresh…"}</span>`;
     return;
   }
+
+  const limited = options.maxRows ? entries.slice(0, options.maxRows) : entries;
   target.classList.remove("empty-state");
   target.innerHTML = `
     <div class="sentiment-head">
       <strong class="${sentiment.status === "halt" ? "sell" : sentiment.status === "elevated" ? "stale" : "buy"}">${titleCase(sentiment.status || "clear")}</strong>
-      <span class="muted">${sentiment.headline || ""}${sentiment.last30days_engine_path ? ` · engine: ${sentiment.last30days_engine_path.split("/").slice(-2).join("/")}` : ""}</span>
+      <span class="muted">${sentiment.headline || ""}</span>
     </div>
     <div class="table-wrap">
       <table class="data-table compact">
         <thead>
-          <tr><th>Symbol</th><th>Score</th><th>Buzz</th><th>Status</th><th>Action</th><th>Top signal</th></tr>
+          <tr><th>Symbol</th><th>Score</th><th>Buzz</th><th>Status</th><th>Action</th>${options.compact ? "" : "<th>Top signal</th>"}</tr>
         </thead>
         <tbody>
-          ${entries
+          ${limited
             .map(([symbol, row]) => {
               const top = (row.top_items || [])[0];
               const score = Number(row.score || 0);
@@ -780,7 +841,7 @@ function renderSentiment(sentiment) {
                   <td class="mono">${row.buzz_volume || 0}</td>
                   <td>${row.status || "clear"}</td>
                   <td>${row.action || "allow"}</td>
-                  <td class="muted">${top ? `[${top.source}] ${top.title}` : "—"}</td>
+                  ${options.compact ? "" : `<td class="muted">${top ? `[${top.source}] ${top.title}` : "—"}</td>`}
                 </tr>
               `;
             })
@@ -788,7 +849,48 @@ function renderSentiment(sentiment) {
         </tbody>
       </table>
     </div>
+    ${options.compact && entries.length > limited.length ? `<p class="muted compact-note">+${entries.length - limited.length} more on Strategies tab</p>` : ""}
   `;
+}
+
+function renderPendingOrders(executionOrders, restingOrders) {
+  const tbody = document.getElementById("pending-orders-body");
+  if (!tbody) return;
+
+  const rows = [];
+  const seen = new Set();
+  for (const order of restingOrders || []) {
+    seen.add(order.order_id);
+    rows.push({ ...order, state: "RESTING" });
+  }
+  for (const order of executionOrders || []) {
+    if (seen.has(order.order_id)) continue;
+    if (order.state === "ACKNOWLEDGED" || order.state === "SENT") {
+      rows.push({ ...order, state: order.state });
+    }
+  }
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="muted empty-row">No resting grid orders — grid arms when RANGE regime detected</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows
+    .sort((a, b) => a.symbol.localeCompare(b.symbol) || a.price - b.price)
+    .map((order) => {
+      const level = (order.reason || "").replace("dynamic_grid_level_", "L") || "—";
+      return `
+        <tr>
+          <td><strong>${order.symbol}</strong></td>
+          <td>${order.side || "BUY"}</td>
+          <td class="mono">${fmt.format(order.price)}</td>
+          <td class="mono">${order.quantity}</td>
+          <td class="mono">${level}</td>
+          <td><span class="regime-pill on">${order.state}</span></td>
+        </tr>
+      `;
+    })
+    .join("");
 }
 
 function renderEvents(events) {

@@ -31,10 +31,12 @@ class PaperBroker:
     aggressive_fills: bool = False
     limit_tolerance_bps: float = 25.0
     fill_full_quantity: bool = False
+    use_bar_low_for_fills: bool = True
     cash: float = field(init=False)
     positions: dict[str, PaperPosition] = field(default_factory=dict)
     fills: list[Fill] = field(default_factory=list)
     seen_order_ids: set[str] = field(default_factory=set)
+    resting_orders: dict[str, Order] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.cash = self.initial_cash
@@ -46,6 +48,35 @@ class PaperBroker:
         self.seen_order_ids.add(order.order_id)
         self._apply_fill(fill)
         return fill
+
+    def place_resting(self, order: Order) -> bool:
+        if order.order_id in self.seen_order_ids:
+            return False
+        self.resting_orders[order.order_id] = order
+        return True
+
+    def cancel_resting(self, order_id: str) -> None:
+        self.resting_orders.pop(order_id, None)
+
+    def cancel_resting_except(self, symbol: str, keep_ids: set[str]) -> None:
+        for order_id, order in list(self.resting_orders.items()):
+            if order.symbol == symbol and order_id not in keep_ids:
+                self.cancel_resting(order_id)
+
+    def fill_resting(self, quotes: dict[str, LiveQuote]) -> list[Fill]:
+        fills: list[Fill] = []
+        for order_id, order in list(self.resting_orders.items()):
+            quote = quotes.get(order.symbol)
+            if quote is None:
+                continue
+            fill = self._preview_fill(order, quote, available_cash=self.cash, resting=True)
+            if fill is None:
+                continue
+            self.cancel_resting(order_id)
+            self.seen_order_ids.add(order_id)
+            self._apply_fill(fill)
+            fills.append(fill)
+        return fills
 
     def submit_atomic(self, orders: list[Order], quotes: dict[str, LiveQuote]) -> list[Fill]:
         if not orders:
@@ -114,12 +145,23 @@ class PaperBroker:
             else 0.0,
             "positions": positions,
             "fills": [_json_ready(asdict(fill)) for fill in self.fills[-25:]],
+            "resting_orders": [
+                {
+                    "order_id": order.order_id,
+                    "symbol": order.symbol,
+                    "side": order.side.value,
+                    "price": order.price,
+                    "quantity": order.quantity,
+                    "reason": order.reason,
+                }
+                for order in sorted(self.resting_orders.values(), key=lambda row: (row.symbol, row.price))
+            ],
         }
 
-    def _preview_fill(self, order: Order, quote: LiveQuote, *, available_cash: float) -> Fill | None:
+    def _preview_fill(self, order: Order, quote: LiveQuote, *, available_cash: float, resting: bool = False) -> Fill | None:
         if order.order_id in self.seen_order_ids:
             return None
-        if not self._limit_order_fills(order, quote):
+        if not self._limit_order_fills(order, quote, resting=resting):
             return None
 
         quantity = order.quantity if self.fill_full_quantity else min(order.quantity, max(int(quote.volume * 0.01), 1))
@@ -143,20 +185,26 @@ class PaperBroker:
             reason=order.reason,
         )
 
-    def _limit_order_fills(self, order: Order, quote: LiveQuote) -> bool:
+    def _limit_order_fills(self, order: Order, quote: LiveQuote, *, resting: bool = False) -> bool:
         if order.side == OrderSide.BUY:
-            if quote.ltp <= order.price:
+            touch = quote.ltp
+            if resting and self.use_bar_low_for_fills and quote.low > 0:
+                touch = min(quote.ltp, quote.low)
+            if touch <= order.price:
                 return True
             if not self.aggressive_fills:
                 return False
             tolerance = order.price * (1 + self.limit_tolerance_bps / 10_000)
-            return quote.ltp <= tolerance
-        if quote.ltp >= order.price:
+            return touch <= tolerance
+        touch = quote.ltp
+        if resting and self.use_bar_low_for_fills and quote.high > 0:
+            touch = max(quote.ltp, quote.high)
+        if touch >= order.price:
             return True
         if not self.aggressive_fills:
             return False
         tolerance = order.price * (1 - self.limit_tolerance_bps / 10_000)
-        return quote.ltp >= tolerance
+        return touch >= tolerance
 
     def _apply_fill(self, fill: Fill) -> None:
         position = self.positions.setdefault(fill.symbol, PaperPosition(symbol=fill.symbol))

@@ -61,6 +61,51 @@ class ExecutionEngine:
         managed.filled_quantity = fill.quantity
         return fill
 
+    def place_resting(self, order: Order) -> bool:
+        if self.live_orders_enabled:
+            return False
+        existing = self.order_fsm.get(order.order_id)
+        if existing is not None and existing.state not in {OrderState.REJECTED, OrderState.CANCELLED, OrderState.FILLED}:
+            return True
+        managed = ManagedOrder(
+            order_id=order.order_id,
+            broker_order_id=None,
+            symbol=order.symbol,
+            side=order.side.value,
+            quantity=order.quantity,
+            price=order.price,
+            strategy_id=order.reason or "strategy",
+        )
+        self.order_fsm.register(managed)
+        managed.transition(OrderState.RISK_APPROVED)
+        if not self.paper_broker.place_resting(order):
+            managed.transition(OrderState.REJECTED, error="resting_duplicate")
+            return False
+        managed.transition(OrderState.ACKNOWLEDGED)
+        return True
+
+    def cancel_resting_except(self, symbol: str, keep_ids: set[str]) -> None:
+        if self.live_orders_enabled:
+            return
+        for order_id, order in list(self.paper_broker.resting_orders.items()):
+            if order.symbol != symbol or order_id in keep_ids:
+                continue
+            self.paper_broker.cancel_resting(order_id)
+            managed = self.order_fsm.get(order_id)
+            if managed is not None:
+                managed.transition(OrderState.CANCELLED)
+
+    def process_resting(self, quotes: dict[str, LiveQuote]) -> list[Fill]:
+        if self.live_orders_enabled:
+            return []
+        fills = self.paper_broker.fill_resting(quotes)
+        for fill in fills:
+            managed = self.order_fsm.get(fill.order_id)
+            if managed is not None:
+                managed.transition(OrderState.FILLED)
+                managed.filled_quantity = fill.quantity
+        return fills
+
     def submit_atomic(self, orders: list[Order], quotes: dict[str, LiveQuote]) -> list[Fill]:
         if self.live_orders_enabled:
             fills: list[Fill] = []
