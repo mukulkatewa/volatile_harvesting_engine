@@ -142,7 +142,10 @@ class PaperStatsService:
         win_sessions = sum(1 for session in closed if float(session.get("total_pnl") or 0) > 0)
         total_fees = sum(float(session.get("fees_paid") or 0) for session in closed)
 
-        current = self._enrich_session(active_session, portfolio) if active_session else None
+        # Fall back to the most recent session when none is active (e.g. after market
+        # close) so the stats panel always shows the latest results instead of going blank.
+        reference_session = active_session or (sessions[0] if sessions else None)
+        current = self._enrich_session(reference_session, portfolio) if reference_session else None
         sentiment_view = sentiment_snapshot_from_dict(sentiment).to_dict() if sentiment else sentiment_snapshot_from_dict({}).to_dict()
 
         multi = {
@@ -178,12 +181,8 @@ class PaperStatsService:
 
     def _enrich_session(self, session: dict[str, Any], portfolio: dict[str, Any]) -> dict[str, Any]:
         started_at = _parse_dt(session.get("started_at"))
-        now = datetime.now(tz=timezone.utc)
-        minutes_active = ((now - started_at).total_seconds() / 60) if started_at else None
-
+        is_active = session.get("status") == "active"
         initial = float(session.get("initial_cash") or 0)
-        equity = float(portfolio.get("equity") or initial)
-        total_pnl = equity - initial
 
         fills = self.database.fills_for_session(session["session_id"])
         breakdown: dict[str, int] = {}
@@ -195,25 +194,50 @@ class PaperStatsService:
             if fill.get("side") == "SELL":
                 exit_reasons[reason] = exit_reasons.get(reason, 0) + 1
 
-        snapshots = self.database.session_snapshots(session["session_id"])
-        avg_deployed = _avg_deployed_from_snapshots(snapshots, equity, portfolio)
+        if is_active:
+            now = datetime.now(tz=timezone.utc)
+            minutes_active = ((now - started_at).total_seconds() / 60) if started_at else None
+            equity = float(portfolio.get("equity") or initial)
+            total_pnl = equity - initial
+            cash = float(portfolio.get("cash") or 0)
+            invested = float(portfolio.get("gross_exposure") or 0)
+            unrealized = float(portfolio.get("unrealized_pnl") or 0)
+            realized = float(portfolio.get("realized_pnl") or 0)
+            fees = float(portfolio.get("fees_paid") or 0)
+            snapshots = self.database.session_snapshots(session["session_id"])
+            avg_deployed = _avg_deployed_from_snapshots(snapshots, equity, portfolio)
+            max_exposure = float(session.get("max_exposure_pct") or portfolio.get("gross_exposure_pct") or 0)
+        else:
+            ended_at = _parse_dt(session.get("ended_at"))
+            minutes_active = ((ended_at - started_at).total_seconds() / 60) if (started_at and ended_at) else None
+            equity = float(session.get("final_equity") or initial)
+            total_pnl = float(session.get("total_pnl") or (equity - initial))
+            cash = equity
+            invested = 0.0
+            unrealized = 0.0
+            realized = total_pnl
+            fees = float(session.get("fees_paid") or 0)
+            snapshots = self.database.session_snapshots(session["session_id"])
+            avg_deployed = _avg_deployed_from_snapshots(snapshots, equity, portfolio)
+            max_exposure = float(session.get("max_exposure_pct") or 0)
 
         row = dict(session)
         row.update(
             {
+                "is_active": is_active,
                 "equity": round(equity, 2),
-                "cash": round(float(portfolio.get("cash") or 0), 2),
-                "invested": round(float(portfolio.get("gross_exposure") or 0), 2),
+                "cash": round(cash, 2),
+                "invested": round(invested, 2),
                 "total_pnl": round(total_pnl, 2),
-                "unrealized_pnl": round(float(portfolio.get("unrealized_pnl") or 0), 2),
-                "realized_pnl": round(float(portfolio.get("realized_pnl") or 0), 2),
-                "fees_paid": round(float(portfolio.get("fees_paid") or 0), 2),
-                "fill_count": len(fills),
-                "strategy_breakdown": breakdown,
+                "unrealized_pnl": round(unrealized, 2),
+                "realized_pnl": round(realized, 2),
+                "fees_paid": round(fees, 2),
+                "fill_count": len(fills) or int(session.get("fill_count") or 0),
+                "strategy_breakdown": breakdown or (session.get("strategy_breakdown") or {}),
                 "exit_reasons": exit_reasons,
                 "avg_deployed": round(avg_deployed, 2),
                 "minutes_active": round(minutes_active, 1) if minutes_active is not None else None,
-                "max_exposure_pct": round(float(session.get("max_exposure_pct") or portfolio.get("gross_exposure_pct") or 0), 1),
+                "max_exposure_pct": round(max_exposure, 1),
             }
         )
         return row

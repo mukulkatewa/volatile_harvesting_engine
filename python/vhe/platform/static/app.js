@@ -711,7 +711,7 @@ function renderPaperStats(stats) {
         <p>${multi.sessions_count || 0} closed · win ${multi.win_rate_pct || 0}% · fees ${money.format(multi.total_fees || 0)}</p>
       </article>
       <article class="stats-card">
-        <span>Today (${current.session_id || "—"})</span>
+        <span>${current.is_active === false ? "Last session" : "Today"} (${current.session_id || "—"})</span>
         <strong class="${Number(current.total_pnl) >= 0 ? "buy" : "sell"}">${money.format(current.total_pnl || 0)}</strong>
         <p>${current.minutes_active || 0}m · ${current.fill_count || 0} fills · ${current.max_exposure_pct || 0}% max deploy</p>
       </article>
