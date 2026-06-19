@@ -148,8 +148,39 @@ body::before {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
 }
+
+.command-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(28, 36, 48, 0.85), rgba(17, 22, 29, 0.65));
+}
+
+.cmd-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  font: 600 11px var(--mono);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.cmd-chip.buy { border-color: rgba(0, 208, 156, 0.35); color: var(--green); background: var(--green-dim); }
+.cmd-chip.sell { border-color: rgba(255, 107, 107, 0.35); color: var(--red); background: var(--red-dim); }
+.cmd-chip.stale { border-color: rgba(240, 180, 41, 0.35); color: var(--amber); background: var(--amber-dim); }
+.cmd-chip.on { border-color: rgba(56, 126, 209, 0.35); color: var(--blue); background: var(--blue-dim); }
+.cmd-chip.muted { color: var(--muted); }
 
 .header-left {
   display: flex;

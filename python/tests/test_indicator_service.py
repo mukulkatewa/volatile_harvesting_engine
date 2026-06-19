@@ -47,3 +47,15 @@ def test_regime_service_classifies_range(quote: LiveQuote) -> None:
         snapshot = service.update(tick)
     regime = regime_service.classify(snapshot)
     assert regime.value in {"RANGE", "UNKNOWN", "TREND_UP", "TREND_DOWN", "CRASH"}
+
+
+def test_indicator_service_seeds_history() -> None:
+    service = IndicatorService()
+    service.seed_bars(
+        "RELIANCE",
+        [
+            {"open": 100, "high": 101, "low": 99, "close": 100, "ltp": 100},
+            {"open": 101, "high": 102, "low": 100, "close": 101, "ltp": 101},
+        ],
+    )
+    assert len(service._history["RELIANCE"]) == 2

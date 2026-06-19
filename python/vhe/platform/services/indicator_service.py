@@ -36,7 +36,13 @@ class IndicatorService:
             "ltp": quote.ltp,
         }
         history = self._history.setdefault(quote.symbol, deque(maxlen=self.history_size))
-        if not history or history[-1]["close"] != quote.close or history[-1]["high"] != quote.high:
+        if history:
+            last = history[-1]
+            if last["close"] == quote.close and last["high"] == quote.high and last["low"] == quote.low:
+                history[-1] = bar
+            elif last["close"] != quote.close or last["high"] != quote.high:
+                history.append(bar)
+        else:
             history.append(bar)
 
         session_high = self._session_high.get(quote.symbol, quote.ltp)
@@ -49,7 +55,7 @@ class IndicatorService:
             atr_value = max(quote.high - quote.low, quote.ltp * 0.006)
             ema_20 = quote.close - (atr_value * 0.04)
             ema_50 = quote.close - (atr_value * 0.14)
-            adx_value = 25.0
+            adx_value = 17.0
             fair_value = quote.close
         else:
             frame = pd.DataFrame(history)
@@ -62,7 +68,7 @@ class IndicatorService:
             adx_series = adx(frame.rename(columns={"close": "close", "high": "high", "low": "low"}), period=14)
             adx_value = float(adx_series.iloc[-1])
             if pd.isna(adx_value):
-                adx_value = 25.0
+                adx_value = 17.0
             adx_value = max(0.0, min(adx_value, 100.0))
             fair_value = ema_50
 
@@ -77,5 +83,16 @@ class IndicatorService:
             intraday_drawdown_pct=drawdown_pct,
         )
 
+    def seed_bars(self, symbol: str, bars: list[dict[str, float]]) -> None:
+        if not bars:
+            return
+        history = self._history.setdefault(symbol, deque(maxlen=self.history_size))
+        for bar in bars:
+            if history and history[-1]["close"] == bar["close"] and history[-1]["high"] == bar["high"]:
+                history[-1] = bar
+            else:
+                history.append(bar)
+
     def reset_session(self) -> None:
         self._session_high.clear()
+        self._history.clear()

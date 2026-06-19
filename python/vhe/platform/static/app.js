@@ -91,6 +91,7 @@ function render(payload) {
   renderRisk(payload.controls || {}, portfolio);
   renderCapital(payload.capital || {});
   renderStrategyStatus(payload.strategy_status || {});
+  renderCommandStrip(payload);
   renderFeedHealth(payload.feed_health || {}, payload.source);
   renderMarketSession(payload.market_session || {});
   renderBars(payload.bars || {});
@@ -466,20 +467,50 @@ function renderQuotes(quotes, regimes, indicators) {
   }
 }
 
+function renderCommandStrip(payload) {
+  const strip = document.getElementById("command-strip");
+  if (!strip) return;
+  const regimes = payload.regimes || {};
+  const summary = payload.strategy_status?.regime_summary || {};
+  const rangeCount = summary.RANGE || Object.values(regimes).filter((r) => r === "RANGE").length;
+  const unknownCount = summary.UNKNOWN || Object.values(regimes).filter((r) => r === "UNKNOWN").length;
+  const trendCount = (summary.TREND_UP || 0) + (summary.TREND_DOWN || 0);
+  const sentiment = payload.sentiment || payload.paper_stats?.sentiment || {};
+  const fills = (payload.fills || payload.portfolio?.fills || []).length;
+  const session = payload.paper_stats?.current_session;
+  const pnl = session?.total_pnl ?? (payload.portfolio?.equity || 0) - (payload.portfolio?.initial_cash || 0);
+
+  strip.innerHTML = `
+    <span class="cmd-chip ${sentiment.status === "halt" ? "sell" : sentiment.status === "elevated" ? "stale" : "buy"}">
+      Sentiment · ${sentiment.status || "—"}${sentiment.last30days_available ? " · L30✓" : ""}
+    </span>
+    <span class="cmd-chip buy">RANGE ${rangeCount}</span>
+    <span class="cmd-chip ${unknownCount ? "stale" : "muted"}">UNK ${unknownCount}</span>
+    <span class="cmd-chip ${trendCount ? "on" : "muted"}">TREND ${trendCount}</span>
+    <span class="cmd-chip">Fills ${fills}</span>
+    <span class="cmd-chip ${Number(pnl) >= 0 ? "buy" : "sell"}">Session ${money.format(pnl || 0)}</span>
+    <span class="cmd-chip muted">${(sentiment.sources_active || []).join(" · ") || "no buzz sources"}</span>
+  `;
+}
+
 function renderStrategyStatus(status) {
   const note = document.getElementById("edge-note");
   const chips = document.getElementById("strategy-status");
   if (!note || !chips) return;
   note.textContent = status.edge || "Waiting for market regime…";
+  const summary = status.regime_summary || {};
+  const summaryText = Object.keys(summary).length
+    ? Object.entries(summary).map(([k, v]) => `${k}:${v}`).join(" ")
+    : "";
   const items = [
-    ["Regime", status.regime || "—", "wait"],
+    ["Regime", status.regime || "—", status.regime === "RANGE" ? "on" : status.regime === "UNKNOWN" ? "wait" : "off"],
     ["Grid", status.grid || "OFF", status.grid === "ACTIVE" ? "on" : "off"],
     ["Momentum", status.momentum || "OFF", status.momentum === "ARMED" ? "on" : "off"],
     ["Pair", status.pair || "WAITING", status.pair && status.pair !== "WAIT" && status.pair !== "WAITING" ? "on" : "wait"],
   ];
-  chips.innerHTML = items
-    .map(([label, value, cls]) => `<span class="status-chip ${cls}">${label}: ${value}</span>`)
-    .join("");
+  chips.innerHTML =
+    items.map(([label, value, cls]) => `<span class="status-chip ${cls}">${label}: ${value}</span>`).join("") +
+    (summaryText ? `<span class="status-chip muted">${summaryText}</span>` : "");
 }
 
 function renderStrategies(gridPlans, momentumPlans, regimes) {

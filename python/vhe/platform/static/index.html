@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/styles.css?v=15" />
+    <link rel="stylesheet" href="/static/styles.css?v=16" />
   </head>
   <body>
     <div class="app">
@@ -53,6 +53,10 @@
             <button type="button" id="kill-button" class="ctrl-btn danger" title="Kill switch">Kill</button>
           </div>
         </header>
+
+        <div class="command-strip" id="command-strip">
+          <span class="cmd-chip muted">Initializing…</span>
+        </div>
 
         <section class="view active" data-view="terminal">
           <div class="hero-metrics">
@@ -182,6 +186,6 @@
         </section>
       </main>
     </div>
-    <script src="/static/app.js?v=15"></script>
+    <script src="/static/app.js?v=16"></script>
   </body>
 </html>

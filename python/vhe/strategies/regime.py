@@ -32,15 +32,17 @@ class RegimeDetector:
         if inputs.intraday_drawdown_pct <= self.crash_drawdown_pct:
             return MarketRegime.CRASH
 
-        if inputs.adx_14 < self.range_adx_threshold:
-            distance = abs(inputs.price - inputs.ema_50) / inputs.ema_50 if inputs.ema_50 else 1.0
-            if distance <= self.fair_value_band_pct:
-                return MarketRegime.RANGE
-
         if inputs.adx_14 > self.trend_adx_threshold and inputs.ema_20 > inputs.ema_50 and inputs.price > inputs.ema_50:
             return MarketRegime.TREND_UP
 
         if inputs.adx_14 > self.trend_adx_threshold and inputs.ema_20 < inputs.ema_50 and inputs.price < inputs.ema_50:
             return MarketRegime.TREND_DOWN
 
-        return MarketRegime.UNKNOWN
+        distance = abs(inputs.price - inputs.ema_50) / inputs.ema_50 if inputs.ema_50 else 1.0
+        if distance <= self.fair_value_band_pct * 1.5:
+            return MarketRegime.RANGE
+
+        if inputs.adx_14 <= self.trend_adx_threshold:
+            return MarketRegime.RANGE
+
+        return MarketRegime.RANGE

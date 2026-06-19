@@ -309,6 +309,7 @@ class StrategyOrchestrator:
                 sentiment_note = f" · sentiment {row.status.value}"
         status = {
             "regime": regime.value,
+            "regime_summary": self._regime_summary(),
             "grid": "ACTIVE" if grid_plan.buy_levels else "WAITING",
             "momentum": "ARMED" if momentum_plan.enabled else "OFF",
             "pair": pair_plan.action if pair_plan else "WAITING",
@@ -324,6 +325,12 @@ class StrategyOrchestrator:
         elif session_phase == SessionPhase.PRE_MARKET:
             status["grid"] = "PREOPEN"
         return status
+
+    def _regime_summary(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for value in self.state.regimes.values():
+            counts[value] = counts.get(value, 0) + 1
+        return counts
 
     def _submit_pair_orders_atomic(self, orders: list[Order]) -> list[Fill]:
         if not orders:

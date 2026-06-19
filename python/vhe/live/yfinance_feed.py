@@ -68,6 +68,66 @@ def fetch_yfinance_quotes(
     return []
 
 
+def fetch_yfinance_history_seed(symbols: list[str], *, lookback_days: int = 60) -> dict[str, list[dict[str, float]]]:
+    """Load daily OHLC history so ADX/ATR warm up immediately on yfinance mode."""
+    import yfinance as yf
+
+    if not symbols:
+        return {}
+
+    tickers = [to_yfinance_symbol(symbol) for symbol in symbols]
+    period = "3mo" if lookback_days > 60 else "2mo"
+    seeds: dict[str, list[dict[str, float]]] = {}
+
+    if len(tickers) == 1:
+        frame = yf.download(
+            tickers[0],
+            period=period,
+            interval="1d",
+            progress=False,
+            threads=False,
+            auto_adjust=False,
+        )
+        bars = _bars_from_single_frame(frame)
+        if bars:
+            seeds[symbols[0]] = bars
+        return seeds
+
+    frame = yf.download(
+        " ".join(tickers),
+        period=period,
+        interval="1d",
+        progress=False,
+        threads=False,
+        group_by="ticker",
+        auto_adjust=False,
+    )
+    for symbol, ticker in zip(symbols, tickers, strict=False):
+        if frame is None or getattr(frame, "empty", True):
+            continue
+        columns = getattr(frame, "columns", None)
+        block = frame[ticker] if columns is not None and ticker in getattr(columns, "levels", [[]])[0] else frame
+        bars = _bars_from_single_frame(block)
+        if bars:
+            seeds[symbol] = bars
+    return seeds
+
+
+def _bars_from_single_frame(frame: object) -> list[dict[str, float]]:
+    if frame is None or getattr(frame, "empty", True):
+        return []
+    bars: list[dict[str, float]] = []
+    for _, row in frame.iterrows():
+        close = float(row["Close"])
+        if close <= 0:
+            continue
+        open_ = float(row.get("Open", close))
+        high = float(row.get("High", close))
+        low = float(row.get("Low", close))
+        bars.append({"open": open_, "high": high, "low": low, "close": close, "ltp": close})
+    return bars[-60:]
+
+
 def _fresh_cached_quotes(cache: dict[str, LiveQuote], now: datetime) -> list[LiveQuote]:
     fresh: list[LiveQuote] = []
     for quote in cache.values():

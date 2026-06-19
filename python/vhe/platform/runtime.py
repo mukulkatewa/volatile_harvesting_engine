@@ -204,6 +204,7 @@ class PlatformRuntime:
         if self.feed_task is not None and not self.feed_task.done():
             return
         self.sentiment_service.start_background()
+        await self._seed_yfinance_indicators()
         self.feed_task = asyncio.create_task(self._run_feed(), name="vhe-feed")
         self.feed_task.add_done_callback(self._feed_task_done)
         if self.heartbeat_task is None or self.heartbeat_task.done():
@@ -216,6 +217,22 @@ class PlatformRuntime:
         if exc is not None:
             self.state.connected = False
             self.state.append_event(event("feed", f"Feed stopped: {exc}", "danger"))
+
+    async def _seed_yfinance_indicators(self) -> None:
+        if self.config.strategies.feed.source != "yfinance":
+            return
+        from vhe.live.yfinance_feed import fetch_yfinance_history_seed
+
+        try:
+            seeds = await asyncio.to_thread(fetch_yfinance_history_seed, list(self.config.strategies.feed.symbols))
+            for symbol, bars in seeds.items():
+                self.indicator_service.seed_bars(symbol, bars)
+            if seeds:
+                self.state.append_event(
+                    event("feed", f"Indicator warmup: seeded {len(seeds)} symbols with daily history", "info")
+                )
+        except Exception as exc:
+            self.state.append_event(event("feed", f"Indicator seed failed: {exc}", "warning"))
 
     async def _run_feed(self) -> None:
         reconnect_seconds = self.config.live.broker.reconnect_seconds
