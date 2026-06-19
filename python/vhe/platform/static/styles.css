@@ -501,6 +501,30 @@ body::before {
   font-size: 12px;
 }
 
+.sentiment-panel {
+  padding: 12px 16px 16px;
+}
+
+.sentiment-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.card-head .ctrl-btn.small {
+  margin-left: auto;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 900px) {
   .stats-detail {
     grid-template-columns: 1fr;

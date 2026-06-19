@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from vhe.analytics.sentiment import sentiment_snapshot
+from vhe.analytics.sentiment import sentiment_snapshot_from_dict
 from vhe.storage.db import PlatformDatabase
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -129,7 +129,13 @@ class PaperStatsService:
     def __init__(self, database: PlatformDatabase) -> None:
         self.database = database
 
-    def build_report(self, *, portfolio: dict[str, Any], active_session: dict[str, Any] | None) -> dict[str, Any]:
+    def build_report(
+        self,
+        *,
+        portfolio: dict[str, Any],
+        active_session: dict[str, Any] | None,
+        sentiment: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         sessions = self.database.list_paper_sessions(limit=30)
         closed = [session for session in sessions if session.get("status") == "closed"]
         cumulative_pnl = sum(float(session.get("total_pnl") or 0) for session in closed)
@@ -137,7 +143,7 @@ class PaperStatsService:
         total_fees = sum(float(session.get("fees_paid") or 0) for session in closed)
 
         current = self._enrich_session(active_session, portfolio) if active_session else None
-        sentiment = sentiment_snapshot()
+        sentiment_view = sentiment_snapshot_from_dict(sentiment).to_dict() if sentiment else sentiment_snapshot_from_dict({}).to_dict()
 
         multi = {
             "sessions_count": len(closed),
@@ -167,13 +173,7 @@ class PaperStatsService:
             "current_session": current,
             "sessions": [self._public_session_row(session) for session in sessions],
             "strategy_health": _strategy_health_dict(health),
-            "sentiment": {
-                "status": sentiment.status.value,
-                "headline": sentiment.headline,
-                "detail": sentiment.detail,
-                "symbols_flagged": list(sentiment.symbols_flagged),
-                "integration_plan": list(sentiment.integration_plan),
-            },
+            "sentiment": sentiment_view,
         }
 
     def _enrich_session(self, session: dict[str, Any], portfolio: dict[str, Any]) -> dict[str, Any]:

@@ -42,6 +42,20 @@ async def api_paper_stats() -> dict:
     return runtime.paper_stats_report()
 
 
+@app.get("/api/sentiment")
+async def api_sentiment() -> dict:
+    return runtime.sentiment_service.to_public_dict()
+
+
+@app.post("/api/sentiment/refresh")
+async def refresh_sentiment() -> dict:
+    await runtime.sentiment_service.refresh_async()
+    runtime.state.sentiment = runtime.sentiment_service.to_public_dict()
+    runtime._refresh_paper_stats(force=True)
+    await runtime._broadcast_state()
+    return runtime.state.sentiment
+
+
 @app.get("/api/config")
 async def api_config() -> dict:
     return {

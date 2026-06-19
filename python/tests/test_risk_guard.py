@@ -31,6 +31,23 @@ def test_risk_guard_blocks_kill_switch_and_pause() -> None:
 
 
 
+def test_risk_guard_blocks_sentiment_halt() -> None:
+    guard = RiskGuard(RiskConfig())
+    guard.sentiment_allows_buy = lambda symbol: symbol != "TMPV"
+    assert guard.evaluate(_order(), {"initial_cash": 25_000, "equity": 25_000, "positions": []}).approved
+    blocked = Order(
+        order_id="risk-2",
+        symbol="TMPV",
+        side=OrderSide.BUY,
+        order_type=OrderType.LIMIT,
+        price=100,
+        quantity=1,
+        created_at=datetime.now(tz=timezone.utc),
+        reason="risk_test",
+    )
+    assert guard.evaluate(blocked, {"initial_cash": 25_000, "equity": 25_000, "positions": []}).reason == "sentiment_halt"
+
+
 def test_risk_guard_blocks_daily_loss_and_quantity_limit() -> None:
     guard = RiskGuard(RiskConfig(max_daily_loss_pct=0.01, max_single_symbol_qty=10))
 

@@ -39,6 +39,7 @@ class PlatformState:
     feed_health: dict = field(default_factory=dict)
     market_session: dict = field(default_factory=dict)
     paper_stats: dict = field(default_factory=dict)
+    sentiment: dict = field(default_factory=dict)
     strategy_status: dict = field(default_factory=dict)
     execution_orders: list[dict] = field(default_factory=list)
     reconciliation: dict = field(default_factory=dict)
@@ -72,6 +73,7 @@ class PlatformState:
             "feed_health": _json_ready(self.feed_health),
             "market_session": _json_ready(self.market_session),
             "paper_stats": _json_ready(self.paper_stats),
+            "sentiment": _json_ready(self.sentiment),
             "strategy_status": _json_ready(self.strategy_status),
             "execution_orders": _json_ready(self.execution_orders),
             "reconciliation": _json_ready(self.reconciliation),

@@ -24,6 +24,8 @@ class MomentumInputs:
     ema_50: float
     atr_14: float
     current_quantity: int = 0
+    sentiment_score: float = 0.0
+    sentiment_allows_entry: bool = True
 
 
 @dataclass(slots=True)
@@ -45,6 +47,8 @@ class MomentumStrategy:
         quote = inputs.quote
         if inputs.regime != MarketRegime.TREND_UP:
             return MomentumPlan(quote.symbol, False, None, None, None, "regime_not_trend_up")
+        if not inputs.sentiment_allows_entry:
+            return MomentumPlan(quote.symbol, False, None, None, None, "sentiment_blocked")
         if inputs.current_quantity > 0:
             return MomentumPlan(quote.symbol, False, None, None, None, "position_already_open")
         if not (quote.ltp > inputs.ema_20 > inputs.ema_50):

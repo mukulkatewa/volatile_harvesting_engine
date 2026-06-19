@@ -1,0 +1,23 @@
+# Social buzz sentiment overlay — inspired by last30days-skill multi-source research.
+# Reddit + Hacker News work out of the box. Optional last30days bridge for X/YouTube/web.
+enabled: true
+refresh_minutes: 15.0
+lookback_days: 30
+
+sources:
+  reddit: true
+  hackernews: true
+  # Requires mvanhorn/last30days-skill cloned + LAST30DAYS_ENGINE_PATH
+  last30days: true
+
+max_items_per_source: 20
+half_life_hours: 12.0
+
+# Score thresholds (−1 bearish … +1 bullish)
+halt_score: -0.55
+elevated_score: -0.25
+momentum_min_score: -0.15
+
+# Risk overlays
+reduce_size_multiplier: 0.5
+widen_spacing_multiplier: 1.35

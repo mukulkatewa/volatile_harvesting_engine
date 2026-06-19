@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/styles.css?v=12" />
+    <link rel="stylesheet" href="/static/styles.css?v=14" />
   </head>
   <body>
     <div class="app">
@@ -147,6 +147,14 @@
             <div class="card-head"><h2>Pair Spread Monitor</h2><span>Z-score engine</span></div>
             <div id="pair-plans" class="strategy-grid"></div>
           </div>
+          <div class="card full">
+            <div class="card-head">
+              <h2>Sentiment Engine</h2>
+              <span>Reddit · HN · last30days</span>
+              <button type="button" id="sentiment-refresh-button" class="ctrl-btn small">Refresh buzz</button>
+            </div>
+            <div id="sentiment-panel" class="sentiment-panel empty-state"><span>Loading sentiment…</span></div>
+          </div>
         </section>
 
         <section class="view" data-view="execution">
@@ -174,6 +182,6 @@
         </section>
       </main>
     </div>
-    <script src="/static/app.js?v=13"></script>
+    <script src="/static/app.js?v=14"></script>
   </body>
 </html>

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from typing import Callable
+
 from vhe.backtest.models import Order, OrderSide
 
 
@@ -25,12 +27,16 @@ class RiskGuard:
     kill_switch: bool = False
     kill_switch_reason: str | None = None
     automation_paused: bool = False
+    sentiment_allows_buy: Callable[[str], bool] | None = None
 
     def evaluate(self, order: Order, portfolio: dict) -> RiskDecision:
         if self.kill_switch:
             return RiskDecision(False, "kill_switch_active")
         if self.automation_paused:
             return RiskDecision(False, "automation_paused")
+        if order.side == OrderSide.BUY and self.sentiment_allows_buy is not None:
+            if not self.sentiment_allows_buy(order.symbol):
+                return RiskDecision(False, "sentiment_halt")
         if _daily_loss_pct(portfolio) <= -self.config.max_daily_loss_pct:
             return RiskDecision(False, "daily_loss_limit")
         if order.quantity > self.config.max_single_symbol_qty:

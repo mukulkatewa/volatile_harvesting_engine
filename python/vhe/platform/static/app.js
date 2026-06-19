@@ -18,6 +18,7 @@ const controls = [
   ["kill-button", "/api/control/kill"],
   ["demo-fill-button", "/api/control/demo-fill"],
   ["reset-paper-button", "/api/control/reset-paper"],
+  ["sentiment-refresh-button", "/api/sentiment/refresh"],
 ];
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -101,6 +102,7 @@ function render(payload) {
   renderFills(payload.fills?.length ? payload.fills : payload.portfolio?.fills || []);
   renderPositions(portfolio.positions || []);
   renderPaperStats(payload.paper_stats || {});
+  renderSentiment(payload.sentiment || payload.paper_stats?.sentiment || {});
   renderEvents(payload.events || []);
 }
 
@@ -138,6 +140,7 @@ const RISK_LABELS = {
   symbol_quantity_limit: "Qty Limit",
   kill_switch_active: "Killed",
   automation_paused: "Paused",
+  sentiment_halt: "Sentiment Halt",
 };
 
 function renderRisk(controls, portfolio = {}) {
@@ -641,6 +644,9 @@ function renderPaperStats(stats) {
   const current = stats.current_session || {};
   const health = stats.strategy_health || {};
   const sentiment = stats.sentiment || {};
+  const sentimentStatus = sentiment.status || "not_configured";
+  const sentimentKlass =
+    sentimentStatus === "halt" ? "sell" : sentimentStatus === "elevated" ? "stale" : sentimentStatus === "clear" ? "buy" : "muted";
   const sessions = stats.sessions || [];
   const breakdown = current.strategy_breakdown || {};
   const verdict = HEALTH_LABELS[health.verdict] || health.verdict || "—";
@@ -665,7 +671,7 @@ function renderPaperStats(stats) {
       </article>
       <article class="stats-card">
         <span>News / sentiment</span>
-        <strong class="muted">${sentiment.status === "not_configured" ? "Not wired" : sentiment.status}</strong>
+        <strong class="${sentimentKlass}">${sentimentStatus === "not_configured" ? "Starting" : sentimentStatus}</strong>
         <p>${sentiment.headline || "—"}</p>
       </article>
     </div>
@@ -678,11 +684,9 @@ function renderPaperStats(stats) {
         </ul>
       </div>
       <div class="stats-sentiment">
-        <h3>Sentiment roadmap</h3>
+        <h3>Buzz overlay</h3>
         <p class="muted">${sentiment.detail || ""}</p>
-        <ol class="stats-plan">
-          ${(sentiment.integration_plan || []).map((step) => `<li>${step}</li>`).join("")}
-        </ol>
+        <p class="muted">Sources: ${(sentiment.sources_active || []).join(", ") || "pending"} · refresh ${sentiment.last_refresh_at ? new Date(sentiment.last_refresh_at).toLocaleTimeString("en-IN") : "—"}</p>
       </div>
     </div>
     <div class="table-wrap">
@@ -704,6 +708,51 @@ function renderPaperStats(stats) {
             </tr>
           `,
             )
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderSentiment(sentiment) {
+  const target = document.getElementById("sentiment-panel");
+  if (!target) return;
+  const symbols = sentiment.symbols || {};
+  const entries = Object.entries(symbols).sort((a, b) => Number(a[1].score) - Number(b[1].score));
+  if (!entries.length) {
+    target.classList.add("empty-state");
+    target.innerHTML = `<span>${sentiment.headline || "Waiting for first sentiment refresh…"}</span>`;
+    return;
+  }
+  target.classList.remove("empty-state");
+  target.innerHTML = `
+    <div class="sentiment-head">
+      <strong class="${sentiment.status === "halt" ? "sell" : sentiment.status === "elevated" ? "stale" : "buy"}">${titleCase(sentiment.status || "clear")}</strong>
+      <span class="muted">${sentiment.headline || ""}</span>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table compact">
+        <thead>
+          <tr><th>Symbol</th><th>Score</th><th>Buzz</th><th>Status</th><th>Action</th><th>Top signal</th></tr>
+        </thead>
+        <tbody>
+          ${entries
+            .map(([symbol, row]) => {
+              const top = (row.top_items || [])[0];
+              const score = Number(row.score || 0);
+              const scoreKlass = score <= -0.55 ? "sell" : score <= -0.25 ? "stale" : "buy";
+              return `
+                <tr>
+                  <td><strong>${symbol}</strong></td>
+                  <td class="mono ${scoreKlass}">${score.toFixed(2)}</td>
+                  <td class="mono">${row.buzz_volume || 0}</td>
+                  <td>${row.status || "clear"}</td>
+                  <td>${row.action || "allow"}</td>
+                  <td class="muted">${top ? `[${top.source}] ${top.title}` : "—"}</td>
+                </tr>
+              `;
+            })
             .join("")}
         </tbody>
       </table>
