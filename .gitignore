@@ -15,4 +15,5 @@ data/research/
 data/*.db
 reports/
 rust/target/
+vendor/last30days-skill/
 

@@ -686,7 +686,7 @@ function renderPaperStats(stats) {
       <div class="stats-sentiment">
         <h3>Buzz overlay</h3>
         <p class="muted">${sentiment.detail || ""}</p>
-        <p class="muted">Sources: ${(sentiment.sources_active || []).join(", ") || "pending"} · refresh ${sentiment.last_refresh_at ? new Date(sentiment.last_refresh_at).toLocaleTimeString("en-IN") : "—"}</p>
+        <p class="muted">Sources: ${(sentiment.sources_active || []).join(", ") || "pending"} · last30days: ${sentiment.last30days_available ? "connected" : "not found"} · refresh ${sentiment.last_refresh_at ? new Date(sentiment.last_refresh_at).toLocaleTimeString("en-IN") : "—"}</p>
       </div>
     </div>
     <div class="table-wrap">
@@ -729,7 +729,7 @@ function renderSentiment(sentiment) {
   target.innerHTML = `
     <div class="sentiment-head">
       <strong class="${sentiment.status === "halt" ? "sell" : sentiment.status === "elevated" ? "stale" : "buy"}">${titleCase(sentiment.status || "clear")}</strong>
-      <span class="muted">${sentiment.headline || ""}</span>
+      <span class="muted">${sentiment.headline || ""}${sentiment.last30days_engine_path ? ` · engine: ${sentiment.last30days_engine_path.split("/").slice(-2).join("/")}` : ""}</span>
     </div>
     <div class="table-wrap">
       <table class="data-table compact">

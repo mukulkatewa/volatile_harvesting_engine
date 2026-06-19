@@ -22,7 +22,7 @@ def test_fetch_yfinance_quotes_mock(monkeypatch) -> None:
 
     now = datetime.now(tz=timezone.utc)
 
-    def fake_fetch(symbols: list[str]) -> list[LiveQuote]:
+    def fake_batch(symbols: list[str], timestamp, **kwargs) -> list[LiveQuote]:
         return [
             LiveQuote(
                 timestamp=now,
@@ -36,7 +36,7 @@ def test_fetch_yfinance_quotes_mock(monkeypatch) -> None:
             )
         ]
 
-    monkeypatch.setattr(yf_module, "fetch_yfinance_quotes", fake_fetch)
+    monkeypatch.setattr(yf_module, "_fetch_batch_quotes", fake_batch)
     quotes = yf_module.fetch_yfinance_quotes(["RELIANCE"])
     assert quotes[0].symbol == "RELIANCE"
     assert quotes[0].ltp == 2500.0

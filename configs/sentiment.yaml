@@ -7,8 +7,11 @@ lookback_days: 30
 sources:
   reddit: true
   hackernews: true
-  # Requires mvanhorn/last30days-skill cloned + LAST30DAYS_ENGINE_PATH
   last30days: true
+
+last30days_search_sources: "reddit,hackernews,web"
+last30days_symbols_per_refresh: 2
+last30days_timeout_seconds: 90.0
 
 max_items_per_source: 20
 half_life_hours: 12.0

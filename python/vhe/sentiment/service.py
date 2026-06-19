@@ -22,6 +22,9 @@ class SentimentConfig:
     reddit_enabled: bool = True
     hackernews_enabled: bool = True
     last30days_enabled: bool = True
+    last30days_symbols_per_refresh: int = 2
+    last30days_search_sources: str = "reddit,hackernews,web"
+    last30days_timeout_seconds: float = 90.0
     max_items_per_source: int = 20
     half_life_hours: float = 12.0
     halt_score: float = -0.55
@@ -43,6 +46,8 @@ class SentimentService:
     _sources_active: tuple[str, ...] = ()
     _refresh_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     _refresh_task: asyncio.Task | None = None
+    _last30days_collector: Last30DaysCollector | None = field(init=False, default=None)
+    _last30days_rotation: int = 0
 
     def __post_init__(self) -> None:
         collectors = []
@@ -51,9 +56,13 @@ class SentimentService:
         if self.config.hackernews_enabled:
             collectors.append(HackerNewsCollector(max_items=self.config.max_items_per_source))
         if self.config.last30days_enabled:
-            bridge = Last30DaysCollector()
+            bridge = Last30DaysCollector(
+                lookback_days=self.config.lookback_days,
+                search_sources=self.config.last30days_search_sources,
+                timeout_seconds=self.config.last30days_timeout_seconds,
+            )
             if bridge.available:
-                collectors.append(bridge)
+                self._last30days_collector = bridge
         self.engine = SentimentEngine(
             collectors,
             half_life_hours=self.config.half_life_hours,
@@ -63,7 +72,10 @@ class SentimentService:
             widen_spacing_multiplier=self.config.widen_spacing_multiplier,
         )
         self.store = SentimentStore(self.database)
-        self._sources_active = tuple(collector.name for collector in collectors)
+        active = [collector.name for collector in collectors]
+        if self._last30days_collector is not None:
+            active.append(self._last30days_collector.name)
+        self._sources_active = tuple(dict.fromkeys(active))
 
     def start_background(self) -> None:
         if not self.config.enabled:
@@ -91,14 +103,36 @@ class SentimentService:
             return self.snapshot()
         all_items = []
         symbols: dict[str, SymbolSentiment] = {}
+        last30days_targets = self._last30days_targets()
         for symbol in self.symbols:
-            row, items = self.engine.refresh_symbol(symbol)
+            extra: list[BuzzItem] = []
+            if self._last30days_collector is not None and symbol in last30days_targets:
+                try:
+                    extra = self._last30days_collector.collect(symbol)
+                except Exception:
+                    extra = []
+            row, items = self.engine.refresh_symbol(symbol, extra_items=extra or None)
             symbols[symbol] = row
             all_items.extend(items)
+        if self._last30days_collector is not None:
+            self._last30days_rotation += self.config.last30days_symbols_per_refresh
         self._symbols = symbols
         self._last_refresh_at = datetime.now(tz=timezone.utc)
         self.store.persist_refresh(symbols=symbols, items=all_items)
         return self.snapshot()
+
+    def _last30days_targets(self) -> set[str]:
+        if not self.symbols or self._last30days_collector is None:
+            return set()
+        count = max(self.config.last30days_symbols_per_refresh, 1)
+        start = self._last30days_rotation % len(self.symbols)
+        selected: list[str] = []
+        for offset in range(len(self.symbols)):
+            symbol = self.symbols[(start + offset) % len(self.symbols)]
+            selected.append(symbol)
+            if len(selected) >= count:
+                break
+        return set(selected)
 
     def snapshot(self) -> SentimentSnapshot:
         if not self.config.enabled:
@@ -154,6 +188,8 @@ class SentimentService:
             "symbols_flagged": list(snap.symbols_flagged),
             "last_refresh_at": snap.last_refresh_at.isoformat() if snap.last_refresh_at else None,
             "sources_active": list(snap.sources_active),
+            "last30days_available": self._last30days_collector is not None,
+            "last30days_engine_path": str(self._last30days_collector.engine_path) if self._last30days_collector else None,
             "integration_plan": list(snap.integration_plan),
             "symbols": {
                 symbol: {

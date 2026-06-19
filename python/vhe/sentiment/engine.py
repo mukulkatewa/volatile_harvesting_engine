@@ -25,13 +25,18 @@ class SentimentEngine:
         self.reduce_size_multiplier = reduce_size_multiplier
         self.widen_spacing_multiplier = widen_spacing_multiplier
 
-    def refresh_symbol(self, symbol: str) -> tuple[SymbolSentiment, list[BuzzItem]]:
+    def refresh_symbol(self, symbol: str, *, extra_items: list[BuzzItem] | None = None) -> tuple[SymbolSentiment, list[BuzzItem]]:
         items: list[BuzzItem] = []
         for collector in self.collectors:
             try:
                 items.extend(collector.collect(symbol))
             except Exception:
                 continue
+        if extra_items:
+            items.extend(extra_items)
+        return self.score_items(symbol, items)
+
+    def score_items(self, symbol: str, items: list[BuzzItem]) -> tuple[SymbolSentiment, list[BuzzItem]]:
         now = datetime.now(tz=timezone.utc)
         if not items:
             sentiment = SymbolSentiment(

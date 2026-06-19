@@ -122,6 +122,14 @@ class PlatformRuntime:
         self.state.sentiment = self.sentiment_service.to_public_dict()
         self.state.phase = "2"
         self._market_session = _market_session_from_config(self.config)
+        l30 = self.state.sentiment.get("last30days_available")
+        sources = ", ".join(self.state.sentiment.get("sources_active") or [])
+        self.state.append_event(
+            event(
+                "sentiment",
+                f"Sentiment ready — {sources or 'no sources'} · last30days: {'on' if l30 else 'off'}",
+            )
+        )
         self._restore_persisted_events()
         self._refresh_paper_stats(force=True)
 

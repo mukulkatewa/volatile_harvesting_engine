@@ -3,8 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from vhe.live.feed import LiveFeed
@@ -12,11 +11,12 @@ from vhe.live.market_session import MarketSessionConfig, session_phase
 from vhe.live.models import LiveQuote, MarketDepthLevel
 
 logger = logging.getLogger(__name__)
+logging.getLogger("yfinance").setLevel(logging.ERROR)
 
 MIN_POLL_SECONDS = 10.0
 CLOSED_MARKET_POLL_SECONDS = 60.0
-FETCH_TIMEOUT_SECONDS = 12.0
-_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="yfinance")
+FETCH_TIMEOUT_SECONDS = 45.0
+CACHE_MAX_AGE_SECONDS = 300.0
 
 
 def to_yfinance_symbol(symbol: str) -> str:
@@ -37,53 +37,85 @@ def fetch_yfinance_quotes(
     *,
     session: MarketSessionConfig | None = None,
     timeout_seconds: float = FETCH_TIMEOUT_SECONDS,
+    cache: dict[str, LiveQuote] | None = None,
 ) -> list[LiveQuote]:
     now = datetime.now(tz=timezone.utc)
     phase = session_phase(session) if session is not None else None
-    quotes: list[LiveQuote] = []
+    if not symbols:
+        return []
 
-    for symbol in symbols:
-        try:
-            future = _executor.submit(_fetch_single_quote, symbol, now)
-            quote = future.result(timeout=timeout_seconds)
-        except FuturesTimeoutError:
-            logger.warning("yfinance quote timed out for %s", symbol)
-            continue
-        except Exception as exc:
-            logger.warning("yfinance quote failed for %s: %s", symbol, exc)
-            continue
+    try:
+        quotes = _fetch_batch_quotes(symbols, now, timeout_seconds=timeout_seconds)
+    except Exception as exc:
+        logger.warning("yfinance batch fetch failed: %s", exc)
+        quotes = []
+
+    if cache is not None:
+        for quote in quotes:
+            cache[quote.symbol] = quote
+
+    if quotes:
+        return quotes
+
+    if cache:
+        cached = _fresh_cached_quotes(cache, now)
+        if cached:
+            logger.info("yfinance empty batch — serving %d cached quote(s)", len(cached))
+            return cached
+
+    if phase is not None:
+        logger.info("yfinance returned no quotes during %s", phase.value)
+    return []
+
+
+def _fresh_cached_quotes(cache: dict[str, LiveQuote], now: datetime) -> list[LiveQuote]:
+    fresh: list[LiveQuote] = []
+    for quote in cache.values():
+        age = (now - quote.timestamp).total_seconds()
+        if age <= CACHE_MAX_AGE_SECONDS:
+            fresh.append(quote)
+    return fresh
+
+
+def _fetch_batch_quotes(symbols: list[str], timestamp: datetime, *, timeout_seconds: float) -> list[LiveQuote]:
+    import yfinance as yf
+
+    tickers = [to_yfinance_symbol(symbol) for symbol in symbols]
+    if len(tickers) == 1:
+        frame = yf.download(
+            tickers[0],
+            period="5d",
+            interval="1d",
+            progress=False,
+            threads=False,
+            auto_adjust=False,
+            timeout=timeout_seconds,
+        )
+        quote = _quote_from_single_frame(symbols[0], frame, timestamp)
+        return [quote] if quote is not None else []
+
+    frame = yf.download(
+        " ".join(tickers),
+        period="5d",
+        interval="1d",
+        progress=False,
+        threads=False,
+        group_by="ticker",
+        auto_adjust=False,
+        timeout=timeout_seconds,
+    )
+    quotes: list[LiveQuote] = []
+    for symbol, ticker in zip(symbols, tickers, strict=False):
+        quote = _quote_from_grouped_frame(symbol, ticker, frame, timestamp)
         if quote is not None:
             quotes.append(quote)
-
-    if not quotes and phase is not None:
-        logger.info("yfinance returned no quotes during %s", phase.value)
     return quotes
 
 
-def _fetch_single_quote(symbol: str, timestamp: datetime) -> LiveQuote | None:
-    import yfinance as yf
-
-    yf_symbol = to_yfinance_symbol(symbol)
-    ticker = yf.Ticker(yf_symbol)
-    return _quote_from_ticker(symbol, ticker, timestamp)
-
-
-def _quote_from_ticker(symbol: str, ticker: object, timestamp: datetime) -> LiveQuote | None:
-    fast_info = getattr(ticker, "fast_info", None)
-    if fast_info is not None:
-        ltp = _pick_price(fast_info, ("last_price", "lastPrice", "regular_market_price", "regularMarketPrice"))
-        if ltp is not None and ltp > 0:
-            open_ = _pick_price(fast_info, ("open", "regular_market_open", "regularMarketOpen")) or ltp
-            high = _pick_price(fast_info, ("day_high", "dayHigh", "regular_market_day_high", "regularMarketDayHigh")) or ltp
-            low = _pick_price(fast_info, ("day_low", "dayLow", "regular_market_day_low", "regularMarketDayLow")) or ltp
-            close = _pick_price(fast_info, ("previous_close", "previousClose", "regular_market_previous_close")) or ltp
-            volume = int(_pick_price(fast_info, ("last_volume", "lastVolume", "ten_day_average_volume")) or 0)
-            return _build_quote(symbol, timestamp, ltp, open_, high, low, close, volume)
-
-    history = ticker.history(period="1d", interval="1m")
-    if history is None or history.empty:
+def _quote_from_single_frame(symbol: str, frame: object, timestamp: datetime) -> LiveQuote | None:
+    if frame is None or getattr(frame, "empty", True):
         return None
-    row = history.iloc[-1]
+    row = frame.iloc[-1]
     ltp = float(row["Close"])
     if ltp <= 0:
         return None
@@ -99,20 +131,14 @@ def _quote_from_ticker(symbol: str, ticker: object, timestamp: datetime) -> Live
     )
 
 
-def _pick_price(fast_info: object, keys: tuple[str, ...]) -> float | None:
-    for key in keys:
-        try:
-            value = fast_info[key]
-        except (KeyError, TypeError, AttributeError):
-            value = getattr(fast_info, key, None)
-        if value is not None:
-            try:
-                parsed = float(value)
-            except (TypeError, ValueError):
-                continue
-            if parsed > 0:
-                return parsed
-    return None
+def _quote_from_grouped_frame(symbol: str, ticker: str, frame: object, timestamp: datetime) -> LiveQuote | None:
+    if frame is None or getattr(frame, "empty", True):
+        return None
+    columns = getattr(frame, "columns", None)
+    if columns is not None and ticker in getattr(columns, "levels", [[]])[0]:
+        block = frame[ticker]
+        return _quote_from_single_frame(symbol, block, timestamp)
+    return _quote_from_single_frame(symbol, frame, timestamp)
 
 
 def _build_quote(
@@ -145,6 +171,8 @@ class YFinanceQuoteFeed(LiveFeed):
     symbols: list[str]
     interval_seconds: float = 15.0
     session: MarketSessionConfig | None = None
+    _cache: dict[str, LiveQuote] = field(default_factory=dict)
+    _empty_streak: int = 0
 
     async def stream(self) -> AsyncIterator[LiveQuote]:
         while True:
@@ -153,16 +181,20 @@ class YFinanceQuoteFeed(LiveFeed):
             if phase is not None and phase.value != "open":
                 poll_seconds = max(poll_seconds, CLOSED_MARKET_POLL_SECONDS)
 
-            try:
-                quotes = await asyncio.to_thread(
-                    fetch_yfinance_quotes,
-                    self.symbols,
-                    session=self.session,
-                )
-            except Exception as exc:
-                logger.exception("yfinance batch fetch failed: %s", exc)
-                quotes = []
+            quotes = await asyncio.to_thread(
+                fetch_yfinance_quotes,
+                self.symbols,
+                session=self.session,
+                cache=self._cache,
+            )
 
-            for quote in quotes:
-                yield quote
+            if quotes:
+                self._empty_streak = 0
+                for quote in quotes:
+                    yield quote
+            else:
+                self._empty_streak += 1
+                if self._empty_streak == 1:
+                    logger.warning("yfinance returned zero quotes for watchlist (%d symbols)", len(self.symbols))
+
             await asyncio.sleep(poll_seconds)

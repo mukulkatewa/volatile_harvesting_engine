@@ -26,6 +26,9 @@ class SentimentYamlConfig(BaseModel):
     momentum_min_score: float = -0.15
     reduce_size_multiplier: float = 0.5
     widen_spacing_multiplier: float = 1.35
+    last30days_search_sources: str = "reddit,hackernews,web"
+    last30days_symbols_per_refresh: int = 2
+    last30days_timeout_seconds: float = 90.0
 
     @classmethod
     def from_yaml(cls, path) -> SentimentYamlConfig:
@@ -43,6 +46,9 @@ class SentimentYamlConfig(BaseModel):
             reddit_enabled=bool(sources.get("reddit", True)),
             hackernews_enabled=bool(sources.get("hackernews", True)),
             last30days_enabled=bool(sources.get("last30days", True)),
+            last30days_symbols_per_refresh=self.last30days_symbols_per_refresh,
+            last30days_search_sources=self.last30days_search_sources,
+            last30days_timeout_seconds=self.last30days_timeout_seconds,
             max_items_per_source=self.max_items_per_source,
             half_life_hours=self.half_life_hours,
             halt_score=self.halt_score,
