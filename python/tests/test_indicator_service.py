@@ -49,6 +49,38 @@ def test_regime_service_classifies_range(quote: LiveQuote) -> None:
     assert regime.value in {"RANGE", "UNKNOWN", "TREND_UP", "TREND_DOWN", "CRASH"}
 
 
+def test_fair_value_anchor_lags_price_to_create_dislocation() -> None:
+    # Regression: fair_value used to equal spot, so no mean-reversion signal could
+    # ever fire (seed gate ltp <= fair_value*(1-band) was impossible). The anchor
+    # must lag a fast price move so a harvestable dislocation appears.
+    service = IndicatorService(history_size=60, anchor_alpha=0.04)
+    service.seed_bars(
+        "AAA",
+        [{"open": 100, "high": 100.5, "low": 99.5, "close": 100.0, "ltp": 100.0} for _ in range(40)],
+    )
+    base = datetime.now(tz=timezone.utc)
+
+    def tick(price: float) -> LiveQuote:
+        return LiveQuote(
+            timestamp=base,
+            symbol="AAA",
+            ltp=price,
+            open=price,
+            high=price + 0.2,
+            low=price - 0.2,
+            close=price,
+            volume=1000,
+        )
+
+    # Sharp drop: anchor stays well above spot -> price is below fair value (buy zone).
+    snapshot = None
+    for _ in range(3):
+        snapshot = service.update(tick(96.0))
+    assert snapshot is not None
+    assert snapshot.fair_value > snapshot.ltp
+    assert snapshot.fair_value < 100.5  # but anchor does drift toward price over time
+
+
 def test_indicator_service_seeds_history() -> None:
     service = IndicatorService()
     service.seed_bars(
