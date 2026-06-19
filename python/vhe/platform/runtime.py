@@ -179,6 +179,7 @@ class PlatformRuntime:
         self.orchestrator.pair_ledger = self.pair_ledger
         self.orchestrator.reset_trading_state()
         self.indicator_service.reset_session()
+        self._reseed_indicators_from_cache()
         self.risk_guard.kill_switch = False
         self.risk_guard.kill_switch_reason = None
         self.risk_guard.automation_paused = False
@@ -227,6 +228,7 @@ class PlatformRuntime:
 
         try:
             seeds = await asyncio.to_thread(fetch_yfinance_history_seed, list(self.config.strategies.feed.symbols))
+            self._indicator_seed_cache = seeds
             for symbol, bars in seeds.items():
                 self.indicator_service.seed_bars(symbol, bars)
             if seeds:
@@ -235,6 +237,13 @@ class PlatformRuntime:
                 )
         except Exception as exc:
             self.state.append_event(event("feed", f"Indicator seed failed: {exc}", "warning"))
+
+    def _reseed_indicators_from_cache(self) -> None:
+        seeds = getattr(self, "_indicator_seed_cache", None)
+        if not seeds:
+            return
+        for symbol, bars in seeds.items():
+            self.indicator_service.seed_bars(symbol, bars)
 
     async def _run_feed(self) -> None:
         reconnect_seconds = self.config.live.broker.reconnect_seconds
@@ -305,6 +314,7 @@ class PlatformRuntime:
         self.session_tracker.maybe_snapshot(self.state.portfolio)
         self._refresh_paper_stats()
         self.state.sentiment = self.sentiment_service.to_public_dict()
+        self._refresh_connection_state()
         await self._broadcast_state()
 
     def _refresh_paper_stats(self, *, force: bool = False) -> None:
@@ -364,11 +374,33 @@ class PlatformRuntime:
                     max_stale_ms=self.config.live.risk.max_quote_stale_ms,
                     market_closed=market_closed,
                 )
+                self._refresh_connection_state()
             self._enforce_stale_feed_guard()
             self.session_tracker.maybe_snapshot(self.state.portfolio)
+            self.orchestrator.sync_all_active_resting_orders()
+            self.state.portfolio = self.orchestrator._enrich_portfolio(
+                self.orchestrator.execution.snapshot_portfolio(self.state.quotes)
+            )
+            self.state.execution_orders = self.orchestrator.execution.orders_snapshot()
             self._refresh_paper_stats()
             self.state.sentiment = self.sentiment_service.to_public_dict()
             await self._broadcast_state()
+
+    def _refresh_connection_state(self) -> None:
+        if not hasattr(self, "feed_health"):
+            return
+        feed_running = self.feed_task is not None and not self.feed_task.done()
+        last_tick = self.feed_health.last_tick_at
+        if last_tick is None:
+            connected = feed_running
+        else:
+            age_seconds = (datetime.now(tz=timezone.utc) - last_tick).total_seconds()
+            poll_seconds = max(self.config.strategies.feed.interval_seconds, 10.0)
+            connected = feed_running and age_seconds <= max(poll_seconds * 4, 90.0)
+        self.state.connected = connected
+        self.feed_health.connected = connected
+        if isinstance(self.state.feed_health, dict):
+            self.state.feed_health["connected"] = connected
 
     def _enforce_stale_feed_guard(self) -> None:
         health = self.state.feed_health
@@ -378,6 +410,9 @@ class PlatformRuntime:
 
         if not health.get("is_stale"):
             self._maybe_clear_stale_kill_switch(health)
+            return
+
+        if self.config.strategies.feed.source == "yfinance" and self.config.live.mode == "paper":
             return
 
         if not self.config.live.risk.kill_switch_on_stale_quotes:

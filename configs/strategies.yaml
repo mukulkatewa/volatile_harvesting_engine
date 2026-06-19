@@ -1,12 +1,17 @@
 grid:
   atr_multiplier: 0.45
-  max_levels: 4
+  max_levels: 3
   no_buy_above_fair_value_pct: 0.012
   min_spacing: 0.75
   min_spacing_pct: 0.004
   fill_tolerance_pct: 0.0
-  seed_deploy_pct: 0.12
+  seed_deploy_pct: 0.20
   level_capital_multiplier: 1.0
+  # Round-trip cost (~0.11% Zerodha intraday) + spread (~0.1%) + edge buffer.
+  # Entry must be this far below fair value and exit must clear this above cost.
+  min_harvest_pct: 0.0035
+  # Floor so each fill is meaningful and fixed costs are amortised, not 1-share churn.
+  min_order_notional: 4000.0
 
 momentum:
   risk_per_trade_inr: 187.5

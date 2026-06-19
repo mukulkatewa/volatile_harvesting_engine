@@ -77,6 +77,8 @@ class GridStrategyConfig(BaseModel):
     fill_tolerance_pct: float = 0.0
     seed_deploy_pct: float = 0.0
     level_capital_multiplier: float = 1.0
+    min_harvest_pct: float = 0.0
+    min_order_notional: float = 0.0
 
 
 class MomentumStrategyConfig(BaseModel):

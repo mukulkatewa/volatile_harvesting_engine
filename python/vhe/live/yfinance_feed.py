@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 
 from vhe.live.feed import LiveFeed
@@ -15,8 +16,10 @@ logging.getLogger("yfinance").setLevel(logging.ERROR)
 
 MIN_POLL_SECONDS = 10.0
 CLOSED_MARKET_POLL_SECONDS = 60.0
-FETCH_TIMEOUT_SECONDS = 45.0
-CACHE_MAX_AGE_SECONDS = 300.0
+FETCH_TIMEOUT_SECONDS = 20.0
+CHUNK_TIMEOUT_SECONDS = 15.0
+CACHE_MAX_AGE_SECONDS = 600.0
+CHUNK_SIZE = 5
 
 
 def to_yfinance_symbol(symbol: str) -> str:
@@ -44,15 +47,32 @@ def fetch_yfinance_quotes(
     if not symbols:
         return []
 
-    try:
-        quotes = _fetch_batch_quotes(symbols, now, timeout_seconds=timeout_seconds)
-    except Exception as exc:
-        logger.warning("yfinance batch fetch failed: %s", exc)
-        quotes = []
+    quotes: list[LiveQuote] = []
+    for chunk in _chunked(symbols, CHUNK_SIZE):
+        try:
+            quotes.extend(_fetch_batch_quotes(chunk, now, timeout_seconds=min(timeout_seconds, CHUNK_TIMEOUT_SECONDS)))
+        except Exception as exc:
+            logger.warning("yfinance chunk fetch failed (%s): %s", ", ".join(chunk), exc)
+            for symbol in chunk:
+                try:
+                    quotes.extend(_fetch_batch_quotes([symbol], now, timeout_seconds=CHUNK_TIMEOUT_SECONDS))
+                except Exception as single_exc:
+                    logger.debug("yfinance single fetch failed for %s: %s", symbol, single_exc)
 
     if cache is not None:
         for quote in quotes:
             cache[quote.symbol] = quote
+
+    fetched = {quote.symbol for quote in quotes}
+    missing = [symbol for symbol in symbols if symbol not in fetched]
+    if missing and cache:
+        for symbol in missing:
+            cached = cache.get(symbol)
+            if cached is None:
+                continue
+            age = (now - cached.timestamp).total_seconds()
+            if age <= CACHE_MAX_AGE_SECONDS:
+                quotes.append(replace(cached, timestamp=now))
 
     if quotes:
         return quotes
@@ -61,7 +81,7 @@ def fetch_yfinance_quotes(
         cached = _fresh_cached_quotes(cache, now)
         if cached:
             logger.info("yfinance empty batch — serving %d cached quote(s)", len(cached))
-            return cached
+            return [replace(quote, timestamp=now) for quote in cached]
 
     if phase is not None:
         logger.info("yfinance returned no quotes during %s", phase.value)
@@ -113,6 +133,10 @@ def fetch_yfinance_history_seed(symbols: list[str], *, lookback_days: int = 60) 
     return seeds
 
 
+def _chunked(items: list[str], size: int) -> list[list[str]]:
+    return [items[index : index + size] for index in range(0, len(items), size)]
+
+
 def _scalar(value: object, default: float = 0.0) -> float:
     if value is None:
         return default
@@ -124,9 +148,12 @@ def _scalar(value: object, default: float = 0.0) -> float:
         except Exception:
             return default
     try:
-        return float(value)
+        number = float(value)
     except (TypeError, ValueError):
         return default
+    if math.isnan(number) or math.isinf(number):
+        return default
+    return number
 
 
 def _bars_from_single_frame(frame: object) -> list[dict[str, float]]:
@@ -244,7 +271,7 @@ def _build_quote(
         high=round(high, 2),
         low=round(low, 2),
         close=round(close, 2),
-        volume=volume,
+        volume=max(volume, 0),
         bid=MarketDepthLevel(price=round(ltp - spread / 2, 2), quantity=1),
         ask=MarketDepthLevel(price=round(ltp + spread / 2, 2), quantity=1),
     )

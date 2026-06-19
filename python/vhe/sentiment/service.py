@@ -218,9 +218,9 @@ class SentimentService:
 
     def seed_deploy_allowed(self, symbol: str) -> bool:
         row = self.symbol(symbol)
-        if row is None or row.action == SentimentAction.HALT:
+        if row is not None and row.action == SentimentAction.HALT:
             return False
-        return row.trending_score >= self.config.seed_deploy_min_heat or row.buzz_volume >= 3
+        return True
 
     def size_multiplier_for(self, ticker: str) -> float:
         row = self.symbol(ticker)

@@ -32,9 +32,9 @@ risk:
   max_single_symbol_qty: 500
   max_symbol_deploy_pct: 0.35
   max_symbol_exposure_pct: 0.25
-  max_grid_fills_per_symbol: 4
+  max_grid_fills_per_symbol: 8
   kill_switch_on_stale_quotes: true
-  max_quote_stale_ms: 180000
+  max_quote_stale_ms: 600000
 
 storage:
   sqlite_path: data/vhe_platform.db

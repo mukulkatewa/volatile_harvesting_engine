@@ -58,6 +58,8 @@ class StrategyOrchestrator:
                 fill_tolerance_pct=strategies.grid.fill_tolerance_pct,
                 seed_deploy_pct=strategies.grid.seed_deploy_pct,
                 level_capital_multiplier=strategies.grid.level_capital_multiplier,
+                min_harvest_pct=strategies.grid.min_harvest_pct,
+                min_order_notional=strategies.grid.min_order_notional,
                 force_exit_time=force_exit,
             )
         )
@@ -130,6 +132,21 @@ class StrategyOrchestrator:
 
         self.execution.cancel_resting_except(quote.symbol, keep_ids)
 
+    def sync_all_active_resting_orders(self) -> None:
+        if not self._resting_grid_enabled():
+            return
+        for symbol in self.state.active_trading_symbols:
+            if self.is_pair_symbol(symbol) or not self._grid_symbol_active(symbol):
+                continue
+            plan = self.state.plans.get(symbol)
+            quote = self.state.quotes.get(symbol)
+            if plan is None or quote is None:
+                continue
+            if plan.regime != MarketRegime.RANGE or not plan.buy_levels:
+                self.execution.cancel_resting_except(symbol, set())
+                continue
+            self._sync_grid_resting_orders(plan, quote, current_quantity=self.single_name_quantity(symbol))
+
     def _process_resting_fills(self) -> list[Fill]:
         if not self._resting_grid_enabled() or not self.state.quotes:
             return []
@@ -148,6 +165,8 @@ class StrategyOrchestrator:
             self._symbol_grid_fills[fill.symbol] = self._symbol_grid_fills.get(fill.symbol, 0) + 1
         if fill.reason and fill.reason.startswith("dynamic_grid"):
             self.grid_strategy.on_fill_reason(fill.symbol, fill.reason)
+        if fill.side == OrderSide.SELL and self.single_name_quantity(fill.symbol) <= 0:
+            self._symbol_grid_fills.pop(fill.symbol, None)
 
     def _apply_sentiment_sizing(self, orders: list[Order]) -> list[Order]:
         if self.sentiment_service is None:
@@ -214,7 +233,9 @@ class StrategyOrchestrator:
             return True
         return symbol in getattr(self.state, "active_trading_symbols", [])
 
-    def build_plans(self, quote: LiveQuote, snapshot: IndicatorSnapshot, regime: MarketRegime) -> tuple[DynamicGridPlan, MomentumPlan]:
+    def build_plans(
+        self, quote: LiveQuote, snapshot: IndicatorSnapshot, regime: MarketRegime
+    ) -> tuple[DynamicGridPlan, MomentumPlan, bool]:
         spacing_mult = 1.0
         sentiment_score = 0.0
         sentiment_allows = True
@@ -250,7 +271,7 @@ class StrategyOrchestrator:
                 sentiment_allows_entry=sentiment_allows,
             )
         )
-        return grid_plan, momentum_plan
+        return grid_plan, momentum_plan, seed_allowed
 
     def build_pair_plan(self) -> list[Order]:
         quote_a = self.state.quotes.get(self.pair_strategy.config.symbol_a)
@@ -283,7 +304,7 @@ class StrategyOrchestrator:
     ) -> None:
         self._refresh_grid_capital()
         self._update_trading_universe()
-        grid_plan, momentum_plan = self.build_plans(quote, snapshot, regime)
+        grid_plan, momentum_plan, seed_allowed = self.build_plans(quote, snapshot, regime)
         self.state.quotes[quote.symbol] = quote
         self.state.plans[quote.symbol] = grid_plan
         self.state.momentum_plans[quote.symbol] = momentum_plan
@@ -310,11 +331,14 @@ class StrategyOrchestrator:
             current_qty = self.single_name_quantity(quote.symbol)
             grid_active = self._grid_symbol_active(quote.symbol)
             if force_exit_only or (trading_open and grid_active):
+                position = self.paper_broker.positions.get(quote.symbol)
+                average_cost = position.avg_price if position else 0.0
                 single_name_orders = self.grid_strategy.orders_from_plan(
                     grid_plan,
                     quote,
                     current_quantity=current_qty,
                     seed_deploy_allowed=seed_allowed and self._grid_symbol_active(quote.symbol),
+                    average_cost=average_cost,
                 )
             elif trading_open and not grid_active:
                 self.execution.cancel_resting_except(quote.symbol, set())
@@ -332,7 +356,7 @@ class StrategyOrchestrator:
                 for order in single_name_orders
                 if not (order.reason or "").startswith("dynamic_grid_level_")
             ]
-            self._sync_grid_resting_orders(grid_plan, quote, current_quantity=self.single_name_quantity(quote.symbol))
+        self.sync_all_active_resting_orders()
 
         single_name_fills = self._submit_orders(single_name_orders)
         resting_fills = self._process_resting_fills()
@@ -379,9 +403,7 @@ class StrategyOrchestrator:
         self.grid_strategy.config = replace(self.grid_strategy.config, symbol_capital=alloc.capital)
 
     def _active_grid_symbol_count(self) -> int:
-        tradeable = [symbol for symbol in self.config.strategies.feed.symbols if not self.is_pair_symbol(symbol)]
-        in_range = sum(1 for symbol in tradeable if self.state.regimes.get(symbol) == MarketRegime.RANGE.value)
-        active = in_range or len(tradeable)
+        active = len(self.state.active_trading_symbols) or self.config.live.max_symbols
         return max(min(active, self.config.live.max_symbols), 1)
 
     def _strategy_status(
@@ -397,12 +419,19 @@ class StrategyOrchestrator:
             row = self.sentiment_service.symbol(grid_plan.symbol)
             if row is not None and row.status.value != "clear":
                 sentiment_note = f" · sentiment {row.status.value}"
-        resting_for_symbol = sum(
-            1 for order in self.paper_broker.resting_orders.values() if order.symbol == grid_plan.symbol
+        resting_total = len(self.paper_broker.resting_orders)
+        armed_symbols = sum(
+            1
+            for symbol in self.state.active_trading_symbols
+            if (plan := self.state.plans.get(symbol)) and plan.buy_levels and plan.regime == MarketRegime.RANGE
         )
         grid_status = "WAITING"
-        if grid_plan.buy_levels:
-            grid_status = f"ARMED({resting_for_symbol})" if resting_for_symbol else "ACTIVE"
+        if resting_total:
+            grid_status = f"ARMED({resting_total})"
+        elif armed_symbols:
+            grid_status = "ACTIVE"
+        elif grid_plan.buy_levels:
+            grid_status = "ACTIVE"
         status = {
             "regime": regime.value,
             "regime_summary": self._regime_summary(),

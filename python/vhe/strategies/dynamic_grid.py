@@ -19,6 +19,8 @@ class DynamicGridConfig:
     fill_tolerance_pct: float = 0.0
     seed_deploy_pct: float = 0.0
     level_capital_multiplier: float = 1.0
+    min_harvest_pct: float = 0.0
+    min_order_notional: float = 0.0
     force_exit_time: time | None = None
 
 
@@ -97,17 +99,6 @@ class DynamicGridStrategy:
                 reset_reason=reset_reason or "regime_not_range",
             )
 
-        if quote.ltp > inputs.fair_value * (1 + self.config.no_buy_above_fair_value_pct):
-            return DynamicGridPlan(
-                symbol=quote.symbol,
-                fair_value=inputs.fair_value,
-                spacing=round(spacing, 2),
-                regime=inputs.regime,
-                buy_levels=[],
-                sell_target=round(inputs.fair_value, 2) if inputs.current_quantity > 0 else None,
-                reset_reason=reset_reason or "price_above_fair_value_band",
-            )
-
         buy_levels = [round(inputs.fair_value - spacing * level, 2) for level in range(1, self.config.max_levels + 1)]
         return DynamicGridPlan(
             symbol=quote.symbol,
@@ -119,8 +110,23 @@ class DynamicGridStrategy:
             reset_reason=reset_reason,
         )
 
+    def _price_extended_above_fair_value(self, quote: LiveQuote, fair_value: float) -> bool:
+        return quote.ltp > fair_value * (1 + self.config.no_buy_above_fair_value_pct)
+
+    def _sized_quantity(self, capital: float, price: float) -> int:
+        if price <= 0:
+            return 1
+        target = max(capital, self.config.min_order_notional)
+        return max(int(target // price), 1)
+
     def orders_from_plan(
-        self, plan: DynamicGridPlan, quote: LiveQuote, *, current_quantity: int = 0, seed_deploy_allowed: bool = True
+        self,
+        plan: DynamicGridPlan,
+        quote: LiveQuote,
+        *,
+        current_quantity: int = 0,
+        seed_deploy_allowed: bool = True,
+        average_cost: float = 0.0,
     ) -> list[Order]:
         if (
             self.config.force_exit_time is not None
@@ -150,9 +156,10 @@ class DynamicGridStrategy:
             and plan.buy_levels
             and plan.regime == MarketRegime.RANGE
             and quote.symbol not in self._seeded_symbols
+            and quote.ltp <= plan.fair_value * (1 - self.config.min_harvest_pct)
         ):
             deploy_capital = self.config.symbol_capital * self.config.seed_deploy_pct
-            quantity = max(int(deploy_capital // quote.ltp), 1)
+            quantity = self._sized_quantity(deploy_capital, quote.ltp)
             orders.append(
                 self._order(
                     quote.timestamp,
@@ -167,8 +174,10 @@ class DynamicGridStrategy:
         for level_index, price in enumerate(plan.buy_levels, start=1):
             if level_index in filled:
                 continue
+            if self._price_extended_above_fair_value(quote, plan.fair_value) and price >= quote.ltp:
+                continue
             if quote.ltp <= price * tolerance:
-                quantity = max(int(level_capital // price), 1)
+                quantity = self._sized_quantity(level_capital, price)
                 orders.append(
                     self._order(
                         quote.timestamp,
@@ -180,7 +189,12 @@ class DynamicGridStrategy:
                     )
                 )
 
-        if plan.sell_target is not None and quote.ltp >= plan.sell_target and current_quantity > 0:
+        if (
+            plan.sell_target is not None
+            and quote.ltp >= plan.sell_target
+            and current_quantity > 0
+            and (average_cost <= 0 or plan.sell_target >= average_cost * (1 + self.config.min_harvest_pct))
+        ):
             orders.append(
                 self._order(
                     quote.timestamp,
@@ -223,7 +237,9 @@ class DynamicGridStrategy:
         for level_index, price in enumerate(plan.buy_levels, start=1):
             if level_index in filled:
                 continue
-            quantity = max(int(level_capital // price), 1)
+            if price >= quote.ltp:
+                continue
+            quantity = self._sized_quantity(level_capital, price)
             orders.append(
                 self._resting_order(
                     quote.timestamp,

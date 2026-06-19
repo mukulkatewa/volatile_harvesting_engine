@@ -198,11 +198,19 @@ function renderRisk(controls, portfolio = {}) {
 function renderConnection(connected) {
   const phase = lastPayload?.market_session?.phase;
   const closed = phase === "closed" || phase === "pre_market";
-  document.getElementById("connection-dot").classList.toggle("live", connected);
-  if (connected && closed) {
+  const feed = lastPayload?.feed_health || {};
+  const source = lastPayload?.source || "";
+  const tickAge = feed.last_tick_age_ms;
+  const feedAlive =
+    connected ||
+    wsOpen ||
+    (typeof tickAge === "number" && tickAge < 120000) ||
+    (source === "yfinance" && feed.last_tick_at);
+  document.getElementById("connection-dot").classList.toggle("live", feedAlive);
+  if (feedAlive && closed) {
     document.getElementById("connection-label").textContent = "Feed On (Market Closed)";
   } else {
-    document.getElementById("connection-label").textContent = connected ? "Live Feed" : "Disconnected";
+    document.getElementById("connection-label").textContent = feedAlive ? "Live Feed" : "Disconnected";
   }
 }
 
@@ -261,13 +269,16 @@ function renderPortfolioBreakdown(portfolio) {
 }
 
 function quoteAgeMs(quote) {
+  if (typeof quote.age_ms === "number" && Number.isFinite(quote.age_ms)) {
+    return Math.max(0, quote.age_ms);
+  }
   if (quote.timestamp) {
     const ts = Date.parse(quote.timestamp);
-    if (!Number.isNaN(ts)) {
-      return Math.max(0, Date.now() - ts);
+    if (!Number.isNaN(ts) && lastServerTimeMs) {
+      return Math.max(0, lastServerTimeMs - ts);
     }
   }
-  return Math.max(0, Number(quote.age_ms) || 0);
+  return 0;
 }
 
 function setPnl(id, value) {
@@ -297,7 +308,7 @@ function renderFeedHealth(health, source) {
   label.className = `feed-source ${closed ? "stale" : online || delayed ? "buy" : "stale"}`;
   const age = health.last_tick_age_ms;
   const threshold = staleThresholdMs(feedSource, health);
-  tickAge.textContent = age == null ? "—" : `${age}ms`;
+  tickAge.textContent = age == null ? "—" : age >= 1000 ? `${Math.round(age / 1000)}s` : `${age}ms`;
   tickAge.className = age != null && age > threshold ? "sell" : "buy";
   const stale = health.stale_symbols || [];
   if (closed) {
@@ -466,7 +477,7 @@ function renderQuotes(quotes, regimes, indicators) {
     row.querySelector(".adx").textContent = typeof adx === "number" ? fmt.format(adx) : "—";
     row.querySelector(".spread").textContent = quote.spread_bps === null ? "—" : fmt.format(quote.spread_bps);
     const ageEl = row.querySelector(".age");
-    ageEl.textContent = `${ageMs}ms`;
+    ageEl.textContent = ageMs >= 1000 ? `${Math.round(ageMs / 1000)}s` : `${Math.round(ageMs)}ms`;
     ageEl.className = `mono age ${ageClass}`;
   }
 
