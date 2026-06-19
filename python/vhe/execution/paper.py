@@ -5,7 +5,7 @@ from datetime import date, datetime
 from enum import Enum
 
 from vhe.backtest.costs import EquityIntradayCostModel
-from vhe.backtest.models import Fill, Order, OrderSide
+from vhe.backtest.models import Fill, Order, OrderSide, OrderType
 from vhe.live.models import LiveQuote
 
 
@@ -126,8 +126,9 @@ class PaperBroker:
         if quantity <= 0:
             return None
 
-        fees = self.cost_model.estimate(side=order.side, price=quote.ltp, quantity=quantity)
-        notional = quote.ltp * quantity
+        fill_price = _fill_price(order, quote)
+        fees = self.cost_model.estimate(side=order.side, price=fill_price, quantity=quantity)
+        notional = fill_price * quantity
         if order.side == OrderSide.BUY and available_cash < notional + fees:
             return None
 
@@ -135,7 +136,7 @@ class PaperBroker:
             order_id=order.order_id,
             symbol=order.symbol,
             side=order.side,
-            price=quote.ltp,
+            price=fill_price,
             quantity=quantity,
             timestamp=quote.timestamp,
             fees=fees,
@@ -207,6 +208,14 @@ class PaperBroker:
 
         self.cash += fill.price * fill.quantity - fill.fees
         position.realized_pnl -= fill.fees
+
+
+def _fill_price(order: Order, quote: LiveQuote) -> float:
+    if order.order_type == OrderType.MARKET:
+        return quote.ltp
+    if order.side == OrderSide.BUY:
+        return min(order.price, quote.ltp)
+    return max(order.price, quote.ltp)
 
 
 def _json_ready(value: object) -> object:

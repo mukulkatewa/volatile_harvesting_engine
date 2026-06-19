@@ -18,6 +18,7 @@ from vhe.live.kite_ws import FeedHealth
 from vhe.live.models import LiveQuote
 from vhe.analytics.paper_stats import PaperStatsService
 from vhe.analytics.session_tracker import PaperSessionTracker
+from vhe.sentiment.service import SentimentService
 from vhe.platform.events import event
 from vhe.platform.services.indicator_service import IndicatorService
 from vhe.platform.services.regime_service import RegimeService
@@ -43,6 +44,7 @@ class PlatformRuntime:
     database: PlatformDatabase | None = field(init=False)
     session_tracker: PaperSessionTracker = field(init=False)
     stats_service: PaperStatsService = field(init=False)
+    sentiment_service: SentimentService = field(init=False)
     feed_health: FeedHealth = field(init=False)
     feed_task: asyncio.Task | None = None
     heartbeat_task: asyncio.Task | None = None
@@ -70,7 +72,17 @@ class PlatformRuntime:
         self.bar_aggregator = BarAggregator(interval_minutes=self.config.strategies.feed.bar_interval_minutes)
         self.paper_broker = self._build_paper_broker(live.capital_cap_inr)
         self.pair_ledger = PairLedger()
+        db_path = live.storage.sqlite_path
+        if not db_path.is_absolute():
+            db_path = self._project_root / db_path
+        self.database = PlatformDatabase(db_path)
+        self.sentiment_service = SentimentService(
+            config=self.config.sentiment.to_service_config(),
+            symbols=self.config.strategies.feed.symbols,
+            database=self.database,
+        )
         self.risk_guard = build_risk_guard(self.config)
+        self.risk_guard.sentiment_allows_buy = self.sentiment_service.allows_buy
         self.capital_allocator = CapitalAllocator(
             total_capital=live.capital_cap_inr,
             buckets=self.config.strategies.capital,
@@ -79,10 +91,6 @@ class PlatformRuntime:
             max_symbol_deploy_pct=live.risk.max_symbol_deploy_pct,
         )
         self.regime_service = RegimeService(config=self.config.strategies.regime)
-        db_path = live.storage.sqlite_path
-        if not db_path.is_absolute():
-            db_path = self._project_root / db_path
-        self.database = PlatformDatabase(db_path)
         self.session_tracker = PaperSessionTracker(
             self.database,
             mode=live.mode,
@@ -106,10 +114,12 @@ class PlatformRuntime:
             regime_service=self.regime_service,
             database=self.database,
             session_tracker=self.session_tracker,
+            sentiment_service=self.sentiment_service,
         )
         self.state.capital = self.capital_allocator.buckets_snapshot()
         self.state.portfolio = self.execution.snapshot_portfolio({})
         self.state.feed_health = {"source": self.config.strategies.feed.source, "connected": False}
+        self.state.sentiment = self.sentiment_service.to_public_dict()
         self.state.phase = "2"
         self._market_session = _market_session_from_config(self.config)
         self._restore_persisted_events()
@@ -157,7 +167,7 @@ class PlatformRuntime:
         self.orchestrator.execution = self.execution
         self.pair_ledger = PairLedger()
         self.orchestrator.pair_ledger = self.pair_ledger
-        self.orchestrator.grid_strategy.reset_session()
+        self.orchestrator.reset_trading_state()
         self.indicator_service.reset_session()
         self.risk_guard.kill_switch = False
         self.risk_guard.kill_switch_reason = None
@@ -185,6 +195,7 @@ class PlatformRuntime:
     async def start_feed(self) -> None:
         if self.feed_task is not None and not self.feed_task.done():
             return
+        self.sentiment_service.start_background()
         self.feed_task = asyncio.create_task(self._run_feed(), name="vhe-feed")
         self.feed_task.add_done_callback(self._feed_task_done)
         if self.heartbeat_task is None or self.heartbeat_task.done():
@@ -266,6 +277,7 @@ class PlatformRuntime:
         self._enforce_stale_feed_guard()
         self.session_tracker.maybe_snapshot(self.state.portfolio)
         self._refresh_paper_stats()
+        self.state.sentiment = self.sentiment_service.to_public_dict()
         await self._broadcast_state()
 
     def _refresh_paper_stats(self, *, force: bool = False) -> None:
@@ -279,12 +291,14 @@ class PlatformRuntime:
         self.state.paper_stats = self.stats_service.build_report(
             portfolio=self.state.portfolio,
             active_session=self.session_tracker.active_session_row(),
+            sentiment=self.sentiment_service.to_public_dict(),
         )
 
     def paper_stats_report(self) -> dict:
         return self.stats_service.build_report(
             portfolio=self.state.portfolio,
             active_session=self.session_tracker.active_session_row(),
+            sentiment=self.sentiment_service.to_public_dict(),
         )
 
     def _on_session_phase_change(self, phase: SessionPhase) -> None:
@@ -326,6 +340,7 @@ class PlatformRuntime:
             self._enforce_stale_feed_guard()
             self.session_tracker.maybe_snapshot(self.state.portfolio)
             self._refresh_paper_stats()
+            self.state.sentiment = self.sentiment_service.to_public_dict()
             await self._broadcast_state()
 
     def _enforce_stale_feed_guard(self) -> None:

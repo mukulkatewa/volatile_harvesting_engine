@@ -34,9 +34,11 @@ class StrategyOrchestrator:
     regime_service: RegimeService
     database: PlatformDatabase | None = None
     session_tracker: object | None = None
+    sentiment_service: object | None = None
     grid_strategy: DynamicGridStrategy = field(init=False)
     momentum_strategy: MomentumStrategy = field(init=False)
     pair_strategy: PairSpreadStrategy = field(init=False)
+    _symbol_grid_fills: dict[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         strategies = self.config.strategies
@@ -52,6 +54,7 @@ class StrategyOrchestrator:
                 symbol_capital=grid_alloc.capital,
                 no_buy_above_fair_value_pct=strategies.grid.no_buy_above_fair_value_pct,
                 min_spacing=strategies.grid.min_spacing,
+                min_spacing_pct=strategies.grid.min_spacing_pct,
                 fill_tolerance_pct=strategies.grid.fill_tolerance_pct,
                 seed_deploy_pct=strategies.grid.seed_deploy_pct,
                 level_capital_multiplier=strategies.grid.level_capital_multiplier,
@@ -79,6 +82,56 @@ class StrategyOrchestrator:
             )
         )
 
+    def reset_trading_state(self) -> None:
+        self._symbol_grid_fills.clear()
+        self.grid_strategy.reset_session()
+
+    def _max_grid_fills_per_symbol(self) -> int:
+        return self.config.live.risk.max_grid_fills_per_symbol
+
+    def _filter_grid_churn(self, orders: list[Order]) -> list[Order]:
+        cap = self._max_grid_fills_per_symbol()
+        allowed: list[Order] = []
+        for order in orders:
+            if order.side != OrderSide.BUY or not (order.reason or "").startswith("dynamic_grid"):
+                allowed.append(order)
+                continue
+            count = self._symbol_grid_fills.get(order.symbol, 0)
+            if count >= cap:
+                self.state.controls.last_risk_reject = "grid_fill_cap"
+                self._log_event(event("risk", f"Rejected {order.symbol}: grid_fill_cap", "warning"))
+                continue
+            allowed.append(order)
+        return allowed
+
+    def _after_fill(self, fill: Fill) -> None:
+        if fill.reason and fill.reason.startswith("dynamic_grid") and fill.side == OrderSide.BUY:
+            self._symbol_grid_fills[fill.symbol] = self._symbol_grid_fills.get(fill.symbol, 0) + 1
+        if fill.reason and fill.reason.startswith("dynamic_grid"):
+            self.grid_strategy.on_fill_reason(fill.symbol, fill.reason)
+
+    def _apply_sentiment_sizing(self, orders: list[Order]) -> list[Order]:
+        if self.sentiment_service is None:
+            return orders
+        adjusted: list[Order] = []
+        for order in orders:
+            if order.side != OrderSide.BUY:
+                adjusted.append(order)
+                continue
+            multiplier = self.sentiment_service.size_multiplier(order.symbol)
+            if multiplier >= 0.999:
+                adjusted.append(order)
+                continue
+            if multiplier <= 0:
+                self.state.controls.last_risk_reject = "sentiment_reduce_zero"
+                continue
+            qty = max(int(order.quantity * multiplier), 1)
+            if qty == order.quantity:
+                adjusted.append(order)
+            else:
+                adjusted.append(replace(order, quantity=qty))
+        return adjusted
+
     def is_pair_symbol(self, symbol: str) -> bool:
         return symbol in {self.pair_strategy.config.symbol_a, self.pair_strategy.config.symbol_b}
 
@@ -93,6 +146,16 @@ class StrategyOrchestrator:
         return position.quantity if position else 0
 
     def build_plans(self, quote: LiveQuote, snapshot: IndicatorSnapshot, regime: MarketRegime) -> tuple[DynamicGridPlan, MomentumPlan]:
+        spacing_mult = 1.0
+        sentiment_score = 0.0
+        sentiment_allows = True
+        if self.sentiment_service is not None:
+            spacing_mult = self.sentiment_service.spacing_multiplier(quote.symbol)
+            row = self.sentiment_service.symbol(quote.symbol)
+            if row is not None:
+                sentiment_score = row.score
+            sentiment_allows = self.sentiment_service.momentum_allowed(quote.symbol)
+
         grid_plan = self.grid_strategy.build_plan(
             DynamicGridInputs(
                 quote=quote,
@@ -100,6 +163,7 @@ class StrategyOrchestrator:
                 atr_14=snapshot.atr_14,
                 regime=regime,
                 current_quantity=self.single_name_quantity(quote.symbol),
+                sentiment_spacing_multiplier=spacing_mult,
             )
         )
         momentum_plan = self.momentum_strategy.build_plan(
@@ -110,6 +174,8 @@ class StrategyOrchestrator:
                 ema_50=snapshot.ema_50,
                 atr_14=snapshot.atr_14,
                 current_quantity=self.single_name_quantity(quote.symbol),
+                sentiment_score=sentiment_score,
+                sentiment_allows_entry=sentiment_allows,
             )
         )
         return grid_plan, momentum_plan
@@ -176,6 +242,8 @@ class StrategyOrchestrator:
 
         single_name_orders = _filter_orders_for_session(single_name_orders, session_phase)
         pair_orders = _filter_orders_for_session(pair_orders, session_phase)
+        single_name_orders = self._filter_grid_churn(single_name_orders)
+        single_name_orders = self._apply_sentiment_sizing(single_name_orders)
 
         single_name_fills = self._submit_orders(single_name_orders)
         pair_fills = self._submit_pair_orders_atomic(pair_orders)
@@ -234,12 +302,17 @@ class StrategyOrchestrator:
         session_phase: SessionPhase | None = None,
     ) -> dict:
         pair_plan = next(iter(self.state.pair_plans.values()), None)
+        sentiment_note = ""
+        if self.sentiment_service is not None:
+            row = self.sentiment_service.symbol(grid_plan.symbol)
+            if row is not None and row.status.value != "clear":
+                sentiment_note = f" · sentiment {row.status.value}"
         status = {
             "regime": regime.value,
             "grid": "ACTIVE" if grid_plan.buy_levels else "WAITING",
             "momentum": "ARMED" if momentum_plan.enabled else "OFF",
             "pair": pair_plan.action if pair_plan else "WAITING",
-            "edge": _edge_note(regime, session_phase),
+            "edge": _edge_note(regime, session_phase) + sentiment_note,
         }
         if session_phase == SessionPhase.CLOSED:
             status["grid"] = "CLOSED"
@@ -275,6 +348,7 @@ class StrategyOrchestrator:
         for fill in fills:
             self._log_event(event("fill", f"{fill.side.value} {fill.symbol} x{fill.quantity} @ {fill.price:.2f}"))
             self._persist_fill(fill)
+            self._after_fill(fill)
         trade = self.pair_ledger.apply_pair_fills(
             f"{self.pair_strategy.config.symbol_a}/{self.pair_strategy.config.symbol_b}",
             fills,
@@ -305,6 +379,7 @@ class StrategyOrchestrator:
                 self.state.portfolio = self._enrich_portfolio(self.execution.snapshot_portfolio(self.state.quotes))
                 self._log_event(event("fill", f"{fill.side.value} {fill.symbol} x{fill.quantity} @ {fill.price:.2f}"))
                 self._persist_fill(fill)
+                self._after_fill(fill)
         return fills
 
     def _log_event(self, entry: PlatformEvent) -> None:

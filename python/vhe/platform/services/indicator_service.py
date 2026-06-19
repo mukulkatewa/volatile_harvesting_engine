@@ -49,7 +49,7 @@ class IndicatorService:
             atr_value = max(quote.high - quote.low, quote.ltp * 0.006)
             ema_20 = quote.close - (atr_value * 0.04)
             ema_50 = quote.close - (atr_value * 0.14)
-            adx_value = 18.0
+            adx_value = 25.0
             fair_value = quote.close
         else:
             frame = pd.DataFrame(history)
@@ -62,7 +62,7 @@ class IndicatorService:
             adx_series = adx(frame.rename(columns={"close": "close", "high": "high", "low": "low"}), period=14)
             adx_value = float(adx_series.iloc[-1])
             if pd.isna(adx_value):
-                adx_value = 18.0
+                adx_value = 25.0
             adx_value = max(0.0, min(adx_value, 100.0))
             fair_value = ema_50
 

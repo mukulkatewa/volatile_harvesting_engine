@@ -7,6 +7,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from vhe.config.models import AppConfig
+from vhe.sentiment.config import SentimentYamlConfig
 
 
 class BrokerConfig(BaseModel):
@@ -27,6 +28,7 @@ class LiveRiskConfig(BaseModel):
     max_single_symbol_qty: int = 100
     max_symbol_deploy_pct: float = 0.10
     max_symbol_exposure_pct: float = 0.30
+    max_grid_fills_per_symbol: int = 12
     kill_switch_on_stale_quotes: bool = True
     max_quote_stale_ms: int = 3000
 
@@ -67,7 +69,8 @@ class GridStrategyConfig(BaseModel):
     atr_multiplier: float = 0.35
     max_levels: int = 5
     no_buy_above_fair_value_pct: float = 0.03
-    min_spacing: float = 0.05
+    min_spacing: float = 0.50
+    min_spacing_pct: float = 0.0025
     fill_tolerance_pct: float = 0.0
     seed_deploy_pct: float = 0.0
     level_capital_multiplier: float = 1.0
@@ -137,6 +140,7 @@ class StrategiesConfig(BaseModel):
 class PlatformConfig(BaseModel):
     live: LiveConfig
     strategies: StrategiesConfig
+    sentiment: SentimentYamlConfig = Field(default_factory=SentimentYamlConfig)
     app: AppConfig | None = None
 
     @property
@@ -149,9 +153,10 @@ def load_platform_config(project_root: Path | None = None, live_config_name: str
     config_dir = root / "configs"
     live = LiveConfig.from_yaml(config_dir / live_config_name)
     strategies = StrategiesConfig.from_yaml(config_dir / "strategies.yaml")
+    sentiment = SentimentYamlConfig.from_yaml(config_dir / "sentiment.yaml")
     app_path = config_dir / "app.yaml"
     app = AppConfig.from_yaml(app_path) if app_path.exists() else None
-    return PlatformConfig(live=live, strategies=strategies, app=app)
+    return PlatformConfig(live=live, strategies=strategies, sentiment=sentiment, app=app)
 
 
 def _find_project_root() -> Path:

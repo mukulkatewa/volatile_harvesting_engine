@@ -61,6 +61,28 @@ def test_dynamic_grid_sells_full_position_at_mean() -> None:
     assert orders[0].quantity == 37
 
 
+def test_paper_broker_fills_at_limit_price() -> None:
+    from vhe.backtest.models import Order, OrderSide, OrderType
+    from vhe.execution.paper import PaperBroker
+
+    broker = PaperBroker(initial_cash=25_000, aggressive_fills=False, fill_full_quantity=True)
+    order = Order(
+        order_id="1",
+        symbol="AAA",
+        side=OrderSide.BUY,
+        order_type=OrderType.LIMIT,
+        price=100,
+        quantity=10,
+        created_at=_quote("AAA", 100).timestamp,
+        reason="test",
+    )
+
+    fill = broker.submit(order, _quote("AAA", 99.5))
+
+    assert fill is not None
+    assert fill.price == 99.5
+
+
 def test_paper_broker_aggressive_fills_near_limit() -> None:
     from vhe.backtest.models import Order, OrderSide, OrderType
     from vhe.execution.paper import PaperBroker

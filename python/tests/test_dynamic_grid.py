@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from vhe.live.models import LiveQuote, MarketDepthLevel
-from vhe.strategies.dynamic_grid import DynamicGridInputs, DynamicGridStrategy
+from vhe.strategies.dynamic_grid import DynamicGridConfig, DynamicGridInputs, DynamicGridPlan, DynamicGridStrategy
 from vhe.strategies.regime import MarketRegime
 
 
@@ -41,6 +41,27 @@ def test_dynamic_grid_blocks_new_buys_outside_range() -> None:
 
     assert plan.buy_levels == []
     assert plan.reset_reason == "initial_grid"
+
+
+def test_dynamic_grid_does_not_rebuy_filled_level() -> None:
+    strategy = DynamicGridStrategy()
+    plan = DynamicGridPlan(
+        symbol="AAA",
+        fair_value=100,
+        spacing=3.5,
+        regime=MarketRegime.RANGE,
+        buy_levels=[96.5, 93.0, 89.5, 86.0, 82.5],
+        sell_target=None,
+    )
+    quote = _quote(96)
+
+    first = strategy.orders_from_plan(plan, quote, current_quantity=0)
+    assert len(first) == 1
+    assert first[0].reason == "dynamic_grid_level_1"
+    strategy.on_fill_reason("AAA", "dynamic_grid_level_1")
+
+    second = strategy.orders_from_plan(plan, quote, current_quantity=first[0].quantity)
+    assert not any(order.reason == "dynamic_grid_level_1" for order in second)
 
 
 def test_dynamic_grid_exits_position_on_crash_regime() -> None:

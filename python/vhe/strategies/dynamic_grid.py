@@ -14,7 +14,8 @@ class DynamicGridConfig:
     max_levels: int = 5
     symbol_capital: float = 18_750.0
     no_buy_above_fair_value_pct: float = 0.03
-    min_spacing: float = 0.05
+    min_spacing: float = 0.50
+    min_spacing_pct: float = 0.0025
     fill_tolerance_pct: float = 0.0
     seed_deploy_pct: float = 0.0
     level_capital_multiplier: float = 1.0
@@ -28,6 +29,7 @@ class DynamicGridInputs:
     atr_14: float
     regime: MarketRegime
     current_quantity: int = 0
+    sentiment_spacing_multiplier: float = 1.0
 
 
 @dataclass(slots=True)
@@ -45,18 +47,42 @@ class DynamicGridPlan:
 class DynamicGridStrategy:
     config: DynamicGridConfig = field(default_factory=DynamicGridConfig)
     _last_grid_center: dict[str, float] = field(default_factory=dict)
+    _filled_levels: dict[str, set[int]] = field(default_factory=dict)
     _seeded_symbols: set[str] = field(default_factory=set)
     _order_sequence: int = 0
 
     def reset_session(self) -> None:
         self._last_grid_center.clear()
+        self._filled_levels.clear()
         self._seeded_symbols.clear()
         self._order_sequence = 0
 
+    def on_fill_reason(self, symbol: str, reason: str) -> None:
+        if reason.startswith("dynamic_grid_level_"):
+            level = int(reason.removeprefix("dynamic_grid_level_"))
+            self._filled_levels.setdefault(symbol, set()).add(level)
+        elif reason == "dynamic_grid_seed_deploy":
+            self._seeded_symbols.add(symbol)
+        elif reason in {
+            "dynamic_grid_mean_exit",
+            "dynamic_grid_force_exit",
+            "dynamic_grid_regime_exit",
+        }:
+            self._filled_levels.pop(symbol, None)
+            self._seeded_symbols.discard(symbol)
+
     def build_plan(self, inputs: DynamicGridInputs) -> DynamicGridPlan:
         quote = inputs.quote
-        spacing = max(inputs.atr_14 * self.config.atr_multiplier, self.config.min_spacing)
+        spacing = _effective_spacing(
+            ltp=quote.ltp,
+            atr_14=inputs.atr_14,
+            atr_multiplier=self.config.atr_multiplier,
+            min_spacing=self.config.min_spacing,
+            min_spacing_pct=self.config.min_spacing_pct,
+        ) * max(inputs.sentiment_spacing_multiplier, 1.0)
         reset_reason = self._reset_reason(symbol=quote.symbol, fair_value=inputs.fair_value, spacing=spacing)
+        if reset_reason == "fair_value_shift":
+            self._filled_levels.pop(quote.symbol, None)
         self._last_grid_center[quote.symbol] = inputs.fair_value
 
         if inputs.regime != MarketRegime.RANGE:
@@ -112,6 +138,7 @@ class DynamicGridStrategy:
         orders: list[Order] = []
         level_capital = (self.config.symbol_capital / self.config.max_levels) * self.config.level_capital_multiplier
         tolerance = 1.0 + self.config.fill_tolerance_pct
+        filled = self._filled_levels.setdefault(plan.symbol, set())
 
         if (
             self.config.seed_deploy_pct > 0
@@ -132,13 +159,21 @@ class DynamicGridStrategy:
                     "dynamic_grid_seed_deploy",
                 )
             )
-            self._seeded_symbols.add(quote.symbol)
 
         for level_index, price in enumerate(plan.buy_levels, start=1):
+            if level_index in filled:
+                continue
             if quote.ltp <= price * tolerance:
                 quantity = max(int(level_capital // price), 1)
                 orders.append(
-                    self._order(quote.timestamp, quote.symbol, OrderSide.BUY, price, quantity, f"dynamic_grid_level_{level_index}")
+                    self._order(
+                        quote.timestamp,
+                        quote.symbol,
+                        OrderSide.BUY,
+                        price,
+                        quantity,
+                        f"dynamic_grid_level_{level_index}",
+                    )
                 )
 
         if plan.sell_target is not None and quote.ltp >= plan.sell_target and current_quantity > 0:
@@ -191,6 +226,19 @@ class DynamicGridStrategy:
             created_at=timestamp,
             reason=reason,
         )
+
+
+def _effective_spacing(
+    *,
+    ltp: float,
+    atr_14: float,
+    atr_multiplier: float,
+    min_spacing: float,
+    min_spacing_pct: float,
+) -> float:
+    atr_spacing = atr_14 * atr_multiplier
+    cost_floor = ltp * min_spacing_pct if ltp > 0 else min_spacing
+    return max(atr_spacing, min_spacing, cost_floor)
 
 
 def _quote_local_time(quote: LiveQuote) -> time:
