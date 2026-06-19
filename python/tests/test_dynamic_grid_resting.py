@@ -34,6 +34,6 @@ def test_resting_buy_orders_use_stable_ids_without_ltp_cross() -> None:
     resting = strategy.resting_buy_orders_from_plan(plan, _quote(102), current_quantity=0)
     immediate = strategy.orders_from_plan(plan, _quote(102), current_quantity=0)
 
-    assert len(resting) == 3
+    assert len(resting) == 1
     assert resting[0].order_id == "dg-AAA-L1"
     assert immediate == []

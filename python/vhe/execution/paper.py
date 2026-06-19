@@ -65,7 +65,13 @@ class PaperBroker:
 
     def fill_resting(self, quotes: dict[str, LiveQuote]) -> list[Fill]:
         fills: list[Fill] = []
-        for order_id, order in list(self.resting_orders.items()):
+        filled_symbols: set[str] = set()
+        for order_id, order in sorted(
+            self.resting_orders.items(),
+            key=lambda item: (_level_sort_key(item[1]), item[1].symbol),
+        ):
+            if order.symbol in filled_symbols:
+                continue
             quote = quotes.get(order.symbol)
             if quote is None:
                 continue
@@ -76,6 +82,7 @@ class PaperBroker:
             self.seen_order_ids.add(order_id)
             self._apply_fill(fill)
             fills.append(fill)
+            filled_symbols.add(order.symbol)
         return fills
 
     def submit_atomic(self, orders: list[Order], quotes: dict[str, LiveQuote]) -> list[Fill]:
@@ -256,6 +263,16 @@ class PaperBroker:
 
         self.cash += fill.price * fill.quantity - fill.fees
         position.realized_pnl -= fill.fees
+
+
+def _level_sort_key(order: Order) -> int:
+    reason = order.reason or ""
+    if reason.startswith("dynamic_grid_level_"):
+        try:
+            return int(reason.removeprefix("dynamic_grid_level_"))
+        except ValueError:
+            return 99
+    return 99
 
 
 def _fill_price(order: Order, quote: LiveQuote) -> float:

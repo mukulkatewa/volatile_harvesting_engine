@@ -149,6 +149,32 @@ body::before {
 
 .meta-link a:hover { text-decoration: underline; }
 
+.sidebar-engine-link {
+  display: block;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: var(--blue);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-decoration: none;
+  word-break: break-word;
+}
+
+.sidebar-engine-link:hover { text-decoration: underline; }
+
+.edge-sentiment {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.edge-sentiment a { color: var(--blue); }
+
+.table-wrap-compact { max-height: 280px; overflow: auto; }
+
 .main {
   padding: 18px 22px 28px;
   min-width: 0;

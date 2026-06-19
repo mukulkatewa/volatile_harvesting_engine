@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/styles.css?v=17" />
+    <link rel="stylesheet" href="/static/styles.css?v=18" />
   </head>
   <body>
     <div class="app">
@@ -29,9 +29,9 @@
           <div class="meta-row"><span>Phase</span><strong id="phase-label">0</strong></div>
           <div class="meta-row"><span>Mode</span><strong id="mode-label">Paper</strong></div>
           <div class="meta-row"><span>Feed</span><strong id="source-label">simulated</strong></div>
-          <div class="meta-row"><span>Sentiment</span><strong id="sidebar-sentiment-label">—</strong></div>
-          <div class="meta-row meta-link"><span>Engine</span><a id="sidebar-l30-link" href="https://github.com/mvanhorn/last30days-skill" target="_blank" rel="noopener">last30days-skill</a></div>
+          <div class="meta-row"><span>Buzz</span><strong id="sidebar-sentiment-label">—</strong></div>
         </div>
+        <a id="sidebar-l30-link" class="sidebar-engine-link" href="https://github.com/mvanhorn/last30days-skill" target="_blank" rel="noopener">last30days-skill</a>
       </aside>
 
       <main class="main">
@@ -109,37 +109,8 @@
               <span>Active Edge</span>
               <p id="edge-note" class="edge-note">Waiting for market regime…</p>
               <div id="strategy-status" class="strategy-status"></div>
+              <div id="edge-sentiment" class="edge-sentiment muted"></div>
             </article>
-          </section>
-
-          <section class="sentiment-terminal-section">
-            <div class="card full sentiment-terminal-card">
-              <div class="card-head">
-                <h2>Sentiment Engine</h2>
-                <span id="terminal-sentiment-sources">Reddit · HN · last30days</span>
-                <button type="button" id="terminal-sentiment-refresh" class="ctrl-btn small">Refresh buzz</button>
-              </div>
-              <div id="terminal-sentiment-panel" class="sentiment-panel empty-state"><span>Loading sentiment…</span></div>
-            </div>
-          </section>
-
-          <section class="pending-section">
-            <div class="card full">
-              <div class="card-head"><h2>Resting Grid Orders</h2><span>Paper limit book · fills on dip</span></div>
-              <div class="table-wrap">
-                <table class="data-table">
-                  <thead><tr><th>Symbol</th><th>Side</th><th>Limit</th><th>Qty</th><th>Level</th><th>State</th></tr></thead>
-                  <tbody id="pending-orders-body"></tbody>
-                </table>
-              </div>
-            </div>
-          </section>
-
-          <section class="bars-section" id="bars-section">
-            <div class="card full">
-              <div class="card-head"><h2>5-Minute Bars</h2><span>Intraday aggregation</span></div>
-              <div id="bars-grid" class="strategy-grid"></div>
-            </div>
           </section>
 
           <section class="ticker-strip" id="ticker"></section>
@@ -149,7 +120,7 @@
               <div class="card-head"><h2>Market Feed</h2><span>Live quotes</span></div>
               <div class="table-wrap">
                 <table class="data-table">
-                  <thead><tr><th>Symbol</th><th>LTP</th><th>Regime</th><th>ADX</th><th>Buzz</th><th>Spread</th><th>Age</th></tr></thead>
+                  <thead><tr><th>Symbol</th><th>LTP</th><th>Regime</th><th>ADX</th><th>Spread</th><th>Age</th></tr></thead>
                   <tbody id="quotes-body"></tbody>
                 </table>
               </div>
@@ -165,6 +136,13 @@
               </div>
             </div>
           </div>
+
+          <section class="bars-section" id="bars-section">
+            <div class="card full">
+              <div class="card-head"><h2>5-Minute Bars</h2><span>Intraday aggregation</span></div>
+              <div id="bars-grid" class="strategy-grid"></div>
+            </div>
+          </section>
         </section>
 
         <section class="view" data-view="strategies">
@@ -198,6 +176,15 @@
               <div id="pair-trades" class="tape empty-state"><span>No pair trades yet</span></div>
             </div>
           </div>
+          <div class="card full">
+            <div class="card-head"><h2>Resting Grid Orders</h2><span id="pending-orders-meta">Paper limit book</span></div>
+            <div class="table-wrap table-wrap-compact">
+              <table class="data-table compact">
+                <thead><tr><th>Symbol</th><th>Side</th><th>Limit</th><th>Qty</th><th>Level</th></tr></thead>
+                <tbody id="pending-orders-body"></tbody>
+              </table>
+            </div>
+          </div>
         </section>
 
         <section class="view" data-view="activity">
@@ -212,6 +199,6 @@
         </section>
       </main>
     </div>
-    <script src="/static/app.js?v=17"></script>
+    <script src="/static/app.js?v=18"></script>
   </body>
 </html>

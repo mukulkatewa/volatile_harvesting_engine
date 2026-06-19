@@ -1,9 +1,9 @@
 grid:
-  atr_multiplier: 0.35
-  max_levels: 5
-  no_buy_above_fair_value_pct: 0.015
-  min_spacing: 0.50
-  min_spacing_pct: 0.0025
+  atr_multiplier: 0.45
+  max_levels: 4
+  no_buy_above_fair_value_pct: 0.012
+  min_spacing: 0.75
+  min_spacing_pct: 0.004
   fill_tolerance_pct: 0.0
   seed_deploy_pct: 0.0
   level_capital_multiplier: 1.0

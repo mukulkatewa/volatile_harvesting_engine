@@ -144,6 +144,15 @@ class SentimentService:
                 headline="Sentiment disabled",
                 detail="Enable sentiment in configs/sentiment.yaml.",
             )
+        if not self._symbols:
+            scanning = "Scanning social buzz…" if self._sources_active else "Sentiment idle"
+            return SentimentSnapshot(
+                status=SentimentStatus.CLEAR,
+                headline=scanning,
+                detail=f"Sources: {', '.join(self._sources_active) or 'none'}. First refresh in progress.",
+                last_refresh_at=self._last_refresh_at,
+                sources_active=self._sources_active,
+            )
         status, headline, detail, flagged = portfolio_snapshot(
             self._symbols,
             last_refresh_at=self._last_refresh_at,
@@ -195,6 +204,7 @@ class SentimentService:
             "last30days_repo_url": LAST30DAYS_REPO_URL,
             "last30days_engine_path": str(self._last30days_collector.engine_path) if self._last30days_collector else None,
             "last30days_engine_label": "mvanhorn/last30days-skill",
+            "last30days_targets_this_cycle": sorted(self._last30days_targets()),
             "integration_plan": list(snap.integration_plan),
             "symbols": {
                 symbol: {

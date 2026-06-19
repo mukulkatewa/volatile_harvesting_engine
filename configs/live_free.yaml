@@ -22,7 +22,7 @@ paper:
   limit_tolerance_bps: 10
   fill_full_quantity: false
   resting_grid_enabled: true
-  use_bar_low_for_fills: true
+  use_bar_low_for_fills: false
 
 risk:
   reserve_capital_pct: 0.10
@@ -31,7 +31,7 @@ risk:
   max_single_symbol_qty: 500
   max_symbol_deploy_pct: 0.35
   max_symbol_exposure_pct: 0.25
-  max_grid_fills_per_symbol: 12
+  max_grid_fills_per_symbol: 4
   kill_switch_on_stale_quotes: true
   max_quote_stale_ms: 180000
 

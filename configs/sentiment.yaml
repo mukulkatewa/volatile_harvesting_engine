@@ -10,8 +10,8 @@ sources:
   last30days: true
 
 last30days_search_sources: "reddit,hackernews,web"
-last30days_symbols_per_refresh: 2
-last30days_timeout_seconds: 90.0
+last30days_symbols_per_refresh: 4
+last30days_timeout_seconds: 120.0
 
 max_items_per_source: 20
 half_life_hours: 12.0

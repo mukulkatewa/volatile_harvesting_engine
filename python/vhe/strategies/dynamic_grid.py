@@ -190,7 +190,7 @@ class DynamicGridStrategy:
 
         if (
             current_quantity > 0
-            and plan.regime in {MarketRegime.CRASH, MarketRegime.TREND_DOWN}
+            and plan.regime == MarketRegime.CRASH
             and not any(order.side == OrderSide.SELL for order in orders)
         ):
             orders.append(
@@ -231,6 +231,7 @@ class DynamicGridStrategy:
                     level_index,
                 )
             )
+            break
         return orders
 
     def _resting_order(

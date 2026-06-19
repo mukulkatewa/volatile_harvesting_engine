@@ -19,7 +19,6 @@ const controls = [
   ["demo-fill-button", "/api/control/demo-fill"],
   ["reset-paper-button", "/api/control/reset-paper"],
   ["sentiment-refresh-button", "/api/sentiment/refresh"],
-  ["terminal-sentiment-refresh", "/api/sentiment/refresh"],
 ];
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -97,7 +96,7 @@ function render(payload) {
   renderMarketSession(payload.market_session || {});
   renderBars(payload.bars || {});
   renderTicker(payload.quotes || {}, payload.regimes || {});
-  renderQuotes(payload.quotes || {}, payload.regimes || {}, payload.indicators || {}, payload.sentiment || payload.paper_stats?.sentiment || {});
+  renderQuotes(payload.quotes || {}, payload.regimes || {}, payload.indicators || {});
   renderStrategies(payload.plans || {}, payload.momentum_plans || {}, payload.regimes || {});
   renderPairs(payload.pair_plans || {});
   renderPairTrades(payload.pair_trades || []);
@@ -105,11 +104,19 @@ function render(payload) {
   renderPositions(portfolio.positions || []);
   renderPendingOrders(payload.execution_orders || [], portfolio.resting_orders || []);
   renderPaperStats(payload.paper_stats || {});
-  const sentiment = payload.sentiment || payload.paper_stats?.sentiment || {};
+  const sentiment = resolveSentiment(payload);
   renderSentiment(sentiment);
-  renderTerminalSentiment(sentiment);
+  renderEdgeSentiment(sentiment);
   renderSidebarSentiment(sentiment);
   renderEvents(payload.events || []);
+}
+
+function resolveSentiment(payload) {
+  const top = payload.sentiment || {};
+  const nested = payload.paper_stats?.sentiment || {};
+  if (top.status && top.status !== "not_configured") return top;
+  if (nested.status && nested.status !== "not_configured") return nested;
+  return Object.keys(top).length ? top : nested;
 }
 
 function switchView(viewId) {
@@ -417,11 +424,10 @@ function renderTicker(quotes, regimes) {
   }
 }
 
-function renderQuotes(quotes, regimes, indicators, sentiment) {
+function renderQuotes(quotes, regimes, indicators) {
   const tbody = document.getElementById("quotes-body");
   const items = Object.values(quotes).sort((a, b) => a.symbol.localeCompare(b.symbol));
   const active = new Set();
-  const sentimentSymbols = sentiment?.symbols || {};
 
   for (const quote of items) {
     active.add(quote.symbol);
@@ -433,7 +439,6 @@ function renderQuotes(quotes, regimes, indicators, sentiment) {
         <td class="mono ltp"></td>
         <td><span class="regime-pill regime"></span></td>
         <td class="mono adx"></td>
-        <td class="mono buzz"></td>
         <td class="mono spread"></td>
         <td class="mono age"></td>
       `;
@@ -459,13 +464,6 @@ function renderQuotes(quotes, regimes, indicators, sentiment) {
     regimeEl.textContent = regime;
     regimeEl.className = `regime-pill regime ${regime}`;
     row.querySelector(".adx").textContent = typeof adx === "number" ? fmt.format(adx) : "—";
-    const buzzRow = sentimentSymbols[quote.symbol];
-    const buzzEl = row.querySelector(".buzz");
-    if (buzzEl) {
-      const score = Number(buzzRow?.score || 0);
-      buzzEl.textContent = buzzRow ? `${score.toFixed(2)} / ${buzzRow.buzz_volume || 0}` : "—";
-      buzzEl.className = `mono buzz ${score <= -0.55 ? "sell" : score <= -0.25 ? "stale" : score > 0 ? "buy" : ""}`;
-    }
     row.querySelector(".spread").textContent = quote.spread_bps === null ? "—" : fmt.format(quote.spread_bps);
     const ageEl = row.querySelector(".age");
     ageEl.textContent = `${ageMs}ms`;
@@ -484,30 +482,23 @@ function renderQuotes(quotes, regimes, indicators, sentiment) {
 function renderCommandStrip(payload) {
   const strip = document.getElementById("command-strip");
   if (!strip) return;
-  const regimes = payload.regimes || {};
   const summary = payload.strategy_status?.regime_summary || {};
+  const regimes = payload.regimes || {};
   const rangeCount = summary.RANGE || Object.values(regimes).filter((r) => r === "RANGE").length;
-  const unknownCount = summary.UNKNOWN || Object.values(regimes).filter((r) => r === "UNKNOWN").length;
-  const trendCount = (summary.TREND_UP || 0) + (summary.TREND_DOWN || 0);
-  const sentiment = payload.sentiment || payload.paper_stats?.sentiment || {};
   const resting = (payload.portfolio?.resting_orders || []).length;
   const fills = (payload.fills || payload.portfolio?.fills || []).length;
   const session = payload.paper_stats?.current_session;
   const pnl = session?.total_pnl ?? (payload.portfolio?.equity || 0) - (payload.portfolio?.initial_cash || 0);
-  const l30Label = sentiment.last30days_engine_label || "last30days-skill";
-  const l30Status = sentiment.last30days_available ? "connected" : "missing";
+  const sentiment = resolveSentiment(payload);
+  const grid = payload.strategy_status?.grid || "—";
 
   strip.innerHTML = `
-    <span class="cmd-chip ${sentiment.status === "halt" ? "sell" : sentiment.status === "elevated" ? "stale" : "buy"}">
-      Sentiment · ${sentiment.status || "—"} · ${l30Label} ${sentiment.last30days_available ? "✓" : "✗"}
-    </span>
     <span class="cmd-chip buy">RANGE ${rangeCount}</span>
-    <span class="cmd-chip ${unknownCount ? "stale" : "muted"}">UNK ${unknownCount}</span>
-    <span class="cmd-chip ${trendCount ? "on" : "muted"}">TREND ${trendCount}</span>
+    <span class="cmd-chip ${String(grid).includes("ARMED") ? "on" : "muted"}">Grid ${grid}</span>
     <span class="cmd-chip ${resting ? "on" : "muted"}">Resting ${resting}</span>
     <span class="cmd-chip">Fills ${fills}</span>
-    <span class="cmd-chip ${Number(pnl) >= 0 ? "buy" : "sell"}">Session ${money.format(pnl || 0)}</span>
-    <span class="cmd-chip muted">${(sentiment.sources_active || []).join(" · ") || "no buzz sources"} · L30 ${l30Status}</span>
+    <span class="cmd-chip ${Number(pnl) >= 0 ? "buy" : "sell"}">${money.format(pnl || 0)}</span>
+    <span class="cmd-chip ${sentiment.status === "halt" ? "sell" : sentiment.status === "elevated" ? "stale" : "buy"}">${humanStatus(sentiment.status)}</span>
   `;
 }
 
@@ -768,21 +759,31 @@ function renderSentiment(sentiment) {
   renderSentimentInto("sentiment-panel", "sentiment-engine-badge", "strategies-sentiment-sources", sentiment, { compact: false });
 }
 
-function renderTerminalSentiment(sentiment) {
-  renderSentimentInto("terminal-sentiment-panel", null, "terminal-sentiment-sources", sentiment, { compact: true, maxRows: 6 });
+function renderEdgeSentiment(sentiment) {
+  const target = document.getElementById("edge-sentiment");
+  if (!target) return;
+  const l30 = sentiment.last30days_available
+    ? `<a href="${sentiment.last30days_repo_url || "https://github.com/mvanhorn/last30days-skill"}" target="_blank" rel="noopener">${sentiment.last30days_engine_label || "last30days-skill"}</a>`
+    : "last30days not installed";
+  const targets = (sentiment.last30days_targets_this_cycle || []).join(", ") || "—";
+  target.innerHTML = `
+    Buzz · <strong class="${sentiment.status === "halt" ? "sell" : sentiment.status === "elevated" ? "stale" : "buy"}">${humanStatus(sentiment.status)}</strong>
+    · ${sentiment.headline || "Scanning…"}
+    · ${l30}
+    · cycle: ${targets}
+  `;
 }
 
 function renderSidebarSentiment(sentiment) {
   const label = document.getElementById("sidebar-sentiment-label");
   const link = document.getElementById("sidebar-l30-link");
   if (label) {
-    const l30 = sentiment.last30days_available ? " · L30✓" : " · L30✗";
-    label.textContent = `${titleCase(sentiment.status || "—")}${l30}`;
+    label.textContent = humanStatus(sentiment.status);
     label.className = sentiment.status === "halt" ? "sell" : sentiment.status === "elevated" ? "stale" : "buy";
   }
-  if (link && sentiment.last30days_repo_url) {
-    link.href = sentiment.last30days_repo_url;
-    link.textContent = sentiment.last30days_engine_label || "last30days-skill";
+  if (link) {
+    link.href = sentiment.last30days_repo_url || "https://github.com/mvanhorn/last30days-skill";
+    link.textContent = sentiment.last30days_available ? "last30days ✓" : "last30days ✗";
   }
 }
 
@@ -803,7 +804,8 @@ function renderSentimentInto(panelId, badgeId, sourcesId, sentiment, options = {
     const status = sentiment.last30days_available ? "connected" : "not found — clone to vendor/last30days-skill";
     badge.innerHTML = `
       Powered by <a href="${repo}" target="_blank" rel="noopener">${sentiment.last30days_engine_label || "mvanhorn/last30days-skill"}</a>
-      · ${status} · path: <code>${path}</code>
+      · ${status}
+      · scanning this cycle: ${(sentiment.last30days_targets_this_cycle || []).join(", ") || "—"}
       · refresh ${sentiment.last_refresh_at ? new Date(sentiment.last_refresh_at).toLocaleTimeString("en-IN") : "pending"}
     `;
   }
@@ -820,7 +822,7 @@ function renderSentimentInto(panelId, badgeId, sourcesId, sentiment, options = {
   target.classList.remove("empty-state");
   target.innerHTML = `
     <div class="sentiment-head">
-      <strong class="${sentiment.status === "halt" ? "sell" : sentiment.status === "elevated" ? "stale" : "buy"}">${titleCase(sentiment.status || "clear")}</strong>
+      <strong class="${sentiment.status === "halt" ? "sell" : sentiment.status === "elevated" ? "stale" : "buy"}">${humanStatus(sentiment.status)}</strong>
       <span class="muted">${sentiment.headline || ""}</span>
     </div>
     <div class="table-wrap">
@@ -855,28 +857,26 @@ function renderSentimentInto(panelId, badgeId, sourcesId, sentiment, options = {
 
 function renderPendingOrders(executionOrders, restingOrders) {
   const tbody = document.getElementById("pending-orders-body");
+  const meta = document.getElementById("pending-orders-meta");
   if (!tbody) return;
 
   const rows = [];
-  const seen = new Set();
   for (const order of restingOrders || []) {
-    seen.add(order.order_id);
-    rows.push({ ...order, state: "RESTING" });
+    rows.push(order);
   }
-  for (const order of executionOrders || []) {
-    if (seen.has(order.order_id)) continue;
-    if (order.state === "ACKNOWLEDGED" || order.state === "SENT") {
-      rows.push({ ...order, state: order.state });
-    }
+
+  if (meta) {
+    meta.textContent = rows.length ? `${rows.length} open limits · fills when LTP dips` : "No open limits";
   }
 
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="muted empty-row">No resting grid orders — grid arms when RANGE regime detected</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="muted empty-row">Grid will arm the nearest buy level per symbol in RANGE</td></tr>`;
     return;
   }
 
   tbody.innerHTML = rows
     .sort((a, b) => a.symbol.localeCompare(b.symbol) || a.price - b.price)
+    .slice(0, 12)
     .map((order) => {
       const level = (order.reason || "").replace("dynamic_grid_level_", "L") || "—";
       return `
@@ -886,7 +886,6 @@ function renderPendingOrders(executionOrders, restingOrders) {
           <td class="mono">${fmt.format(order.price)}</td>
           <td class="mono">${order.quantity}</td>
           <td class="mono">${level}</td>
-          <td><span class="regime-pill on">${order.state}</span></td>
         </tr>
       `;
     })
@@ -913,6 +912,14 @@ function renderEvents(events) {
     `,
     )
     .join("");
+}
+
+function humanStatus(value) {
+  if (!value || value === "not_configured") return "Scanning";
+  return String(value)
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function titleCase(value) {
