@@ -113,18 +113,39 @@ def fetch_yfinance_history_seed(symbols: list[str], *, lookback_days: int = 60) 
     return seeds
 
 
+def _scalar(value: object, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    if hasattr(value, "iloc"):
+        try:
+            if len(value) == 0:
+                return default
+            value = value.iloc[0]
+        except Exception:
+            return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _bars_from_single_frame(frame: object) -> list[dict[str, float]]:
     if frame is None or getattr(frame, "empty", True):
         return []
     bars: list[dict[str, float]] = []
     for _, row in frame.iterrows():
-        close = float(row["Close"])
+        close = _scalar(row["Close"])
         if close <= 0:
             continue
-        open_ = float(row.get("Open", close))
-        high = float(row.get("High", close))
-        low = float(row.get("Low", close))
-        bars.append({"open": open_, "high": high, "low": low, "close": close, "ltp": close})
+        bars.append(
+            {
+                "open": _scalar(row.get("Open", close), close),
+                "high": _scalar(row.get("High", close), close),
+                "low": _scalar(row.get("Low", close), close),
+                "close": close,
+                "ltp": close,
+            }
+        )
     return bars[-60:]
 
 
@@ -176,18 +197,18 @@ def _quote_from_single_frame(symbol: str, frame: object, timestamp: datetime) ->
     if frame is None or getattr(frame, "empty", True):
         return None
     row = frame.iloc[-1]
-    ltp = float(row["Close"])
+    ltp = _scalar(row["Close"])
     if ltp <= 0:
         return None
     return _build_quote(
         symbol,
         timestamp,
         ltp,
-        float(row.get("Open", ltp)),
-        float(row.get("High", ltp)),
-        float(row.get("Low", ltp)),
-        float(row["Close"]),
-        int(row.get("Volume", 0) or 0),
+        _scalar(row.get("Open", ltp), ltp),
+        _scalar(row.get("High", ltp), ltp),
+        _scalar(row.get("Low", ltp), ltp),
+        ltp,
+        int(_scalar(row.get("Volume", 0))),
     )
 
 
@@ -195,7 +216,10 @@ def _quote_from_grouped_frame(symbol: str, ticker: str, frame: object, timestamp
     if frame is None or getattr(frame, "empty", True):
         return None
     columns = getattr(frame, "columns", None)
-    if columns is not None and ticker in getattr(columns, "levels", [[]])[0]:
+    if columns is not None and getattr(columns, "nlevels", 1) > 1:
+        level_values = columns.get_level_values(0)
+        if ticker not in level_values:
+            return None
         block = frame[ticker]
         return _quote_from_single_frame(symbol, block, timestamp)
     return _quote_from_single_frame(symbol, frame, timestamp)
