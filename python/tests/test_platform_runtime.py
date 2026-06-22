@@ -98,8 +98,11 @@ def test_sync_all_active_resting_orders_arms_multiple_symbols() -> None:
     runtime.state.active_trading_symbols = ["TCS", "INFY"]
     runtime.orchestrator.sync_all_active_resting_orders()
     resting = list(runtime.orchestrator.paper_broker.resting_orders.values())
-    assert len(resting) == 2
+    # Full ladder per symbol -> both symbols armed with multiple levels each.
     assert {order.symbol for order in resting} == {"TCS", "INFY"}
+    assert len(resting) >= 2
+    assert sum(1 for o in resting if o.symbol == "TCS") >= 1
+    assert sum(1 for o in resting if o.symbol == "INFY") >= 1
 
 
 def test_session_open_does_not_crash_on_duplicate_trading_date(tmp_path) -> None:

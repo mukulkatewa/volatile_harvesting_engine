@@ -71,7 +71,8 @@ def test_execution_engine_syncs_resting_grid_orders() -> None:
     quote = _quote("RELIANCE", 1326.0)
 
     resting = strategy.resting_buy_orders_from_plan(plan, quote, current_quantity=0)
-    assert len(resting) == 1
+    # Full ladder of levels below spot is armed (both 1320 and 1315 are below 1326).
+    assert len(resting) == 2
 
     assert engine.place_resting(resting[0]) is True
     assert len(broker.resting_orders) == 1

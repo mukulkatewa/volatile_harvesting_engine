@@ -156,7 +156,7 @@ class DynamicGridStrategy:
             and plan.buy_levels
             and plan.regime == MarketRegime.RANGE
             and quote.symbol not in self._seeded_symbols
-            and quote.ltp <= plan.fair_value * (1 - self.config.min_harvest_pct)
+            and quote.ltp <= plan.fair_value
         ):
             deploy_capital = self.config.symbol_capital * self.config.seed_deploy_pct
             quantity = self._sized_quantity(deploy_capital, quote.ltp)
@@ -234,6 +234,9 @@ class DynamicGridStrategy:
         level_capital = (self.config.symbol_capital / self.config.max_levels) * self.config.level_capital_multiplier
         filled = self._filled_levels.setdefault(plan.symbol, set())
 
+        # Arm the full ladder of unfilled levels below the current price. The broker
+        # fills at most one per tick, so the book deploys progressively as price dips
+        # through levels instead of stalling on a single resting order.
         for level_index, price in enumerate(plan.buy_levels, start=1):
             if level_index in filled:
                 continue
@@ -251,7 +254,6 @@ class DynamicGridStrategy:
                     level_index,
                 )
             )
-            break
         return orders
 
     def _resting_order(

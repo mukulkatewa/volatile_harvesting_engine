@@ -43,8 +43,9 @@ def test_dynamic_grid_keeps_ladder_when_price_above_fair_value_band() -> None:
     assert all(level < 100 for level in plan.buy_levels)
     assert strategy.orders_from_plan(plan, _quote(102), current_quantity=0, seed_deploy_allowed=True) == []
     resting = strategy.resting_buy_orders_from_plan(plan, _quote(102), current_quantity=0)
-    assert len(resting) == 1
-    assert resting[0].price < 102
+    # Full ladder armed below spot.
+    assert len(resting) == len([lvl for lvl in plan.buy_levels if lvl < 102])
+    assert all(order.price < 102 for order in resting)
 
 
 def test_seed_deploy_enters_base_below_fair_value() -> None:
@@ -87,14 +88,21 @@ def test_mean_exit_requires_harvest_band_above_cost() -> None:
     assert any(order.reason == "dynamic_grid_mean_exit" for order in wide)
 
 
-def test_seed_entry_requires_dip_below_cost_band() -> None:
+def test_seed_entry_deploys_at_or_below_mean_but_not_above() -> None:
     strategy = DynamicGridStrategy(DynamicGridConfig(seed_deploy_pct=0.20, min_harvest_pct=0.0035))
-    # Price only 0.1% below mean -> inside cost band -> no seed.
+    # At/below the mean -> base position deploys (the harvest band guards the exit, not entry).
     plan = strategy.build_plan(
         DynamicGridInputs(quote=_quote(99.9), fair_value=100, atr_14=10, regime=MarketRegime.RANGE)
     )
     near = strategy.orders_from_plan(plan, _quote(99.9), current_quantity=0, seed_deploy_allowed=True)
-    assert not any(order.reason == "dynamic_grid_seed_deploy" for order in near)
+    assert any(order.reason == "dynamic_grid_seed_deploy" for order in near)
+
+    # Above the mean -> no base entry.
+    plan_above = strategy.build_plan(
+        DynamicGridInputs(quote=_quote(100.5), fair_value=100, atr_14=10, regime=MarketRegime.RANGE)
+    )
+    above = strategy.orders_from_plan(plan_above, _quote(100.5), current_quantity=0, seed_deploy_allowed=True)
+    assert not any(order.reason == "dynamic_grid_seed_deploy" for order in above)
 
 
 def test_min_order_notional_floors_quantity() -> None:

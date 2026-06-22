@@ -34,6 +34,9 @@ def test_resting_buy_orders_use_stable_ids_without_ltp_cross() -> None:
     resting = strategy.resting_buy_orders_from_plan(plan, _quote(102), current_quantity=0)
     immediate = strategy.orders_from_plan(plan, _quote(102), current_quantity=0)
 
-    assert len(resting) == 1
-    assert resting[0].order_id == "dg-AAA-L1"
+    # Full ladder of levels below spot is armed, with stable per-level ids.
+    assert len(resting) == 3
+    assert [o.order_id for o in resting] == ["dg-AAA-L1", "dg-AAA-L2", "dg-AAA-L3"]
+    assert all(o.price < 102 for o in resting)
+    # No immediate market entry when price is above the mean (seed/levels not triggered).
     assert immediate == []
