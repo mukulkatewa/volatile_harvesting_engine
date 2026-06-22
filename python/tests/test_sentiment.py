@@ -11,6 +11,18 @@ def test_lexicon_score_detects_bearish_terms() -> None:
     assert lexicon_score("Record profit beat estimates rally") > 0.5
 
 
+def test_trading_universe_fills_to_max_even_without_buzz() -> None:
+    # Regression: when only 1-2 names had buzz, the universe collapsed to those,
+    # starving capital deployment. It must fill up to max_symbols with eligible names.
+    service = SentimentService(
+        SentimentConfig(reddit_enabled=False, hackernews_enabled=False, last30days_enabled=False),
+        symbols=["RELIANCE", "INFY", "TCS", "SBIN", "ITC", "LT"],
+    )
+    universe = service.trading_universe(4)
+    assert len(universe) == 4
+    assert all(symbol in service.symbols for symbol in universe)
+
+
 def test_engine_refresh_symbol_runs_without_import_error() -> None:
     # Regression: engine.refresh_symbol used filter_buzz_items without importing it,
     # silently killing every sentiment refresh. It must run and score buzz now.

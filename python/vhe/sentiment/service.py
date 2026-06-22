@@ -205,19 +205,28 @@ class SentimentService:
         return [symbol for symbol, _, _ in self.trending_ranked()[:limit]]
 
     def trading_universe(self, max_symbols: int, *, regime_by_symbol: dict[str, str] | None = None) -> list[str]:
+        # Buzz leaders set the priority order, but the universe must still fill up to
+        # max_symbols with other tradeable names. Indian equities rarely carry Reddit/HN
+        # buzz, so requiring buzz to trade starves the grid of capital deployment.
         ranked = self.trending_ranked()
-        hot = [symbol for symbol, heat, _ in ranked if heat >= self.config.trending_min_heat][:max_symbols]
-        if hot:
-            return hot
+        universe: list[str] = [
+            symbol for symbol, heat, _ in ranked if heat >= self.config.trending_min_heat and self.allows_buy(symbol)
+        ]
+
+        def _append(candidates: list[str]) -> None:
+            for symbol in candidates:
+                if len(universe) >= max_symbols:
+                    return
+                if symbol in universe or not self.allows_buy(symbol):
+                    continue
+                universe.append(symbol)
+
+        # Prefer symbols currently in a RANGE regime (where the grid actually arms).
         if regime_by_symbol:
-            fallback = [
-                symbol
-                for symbol in self.symbols
-                if regime_by_symbol.get(symbol) == "RANGE" and self.allows_buy(symbol)
-            ]
-            if fallback:
-                return fallback[:max_symbols]
-        return self.symbols[:max_symbols]
+            _append([s for s in self.symbols if regime_by_symbol.get(s) == "RANGE"])
+        # Then any remaining non-halted watchlist names.
+        _append(list(self.symbols))
+        return universe[:max_symbols]
 
     def seed_deploy_allowed(self, symbol: str) -> bool:
         row = self.symbol(symbol)
