@@ -214,6 +214,68 @@ async def run_monte_carlo(req: MonteCarloRequest) -> dict:
     }
 
 
+@app.get("/api/backtest/walk-forward")
+async def run_walk_forward(
+    symbol: str,
+    bars_file: str,
+    train_days: int = 60,
+    test_days: int = 15,
+    step_days: int = 15,
+    initial_capital: float = 75_000.0,
+) -> dict:
+    import pandas as pd
+    from pathlib import Path as FilePath
+
+    from vhe.backtest.walk_forward import run as wf_run
+
+    bars_path = FilePath(bars_file)
+    if not bars_path.is_absolute():
+        bars_path = STATIC_DIR.parents[3] / bars_file
+    if not bars_path.exists():
+        raise HTTPException(status_code=400, detail=f"bars_file not found: {bars_file}")
+
+    if bars_path.suffix.lower() == ".csv":
+        bars = pd.read_csv(bars_path)
+    elif bars_path.suffix.lower() == ".parquet":
+        bars = pd.read_parquet(bars_path)
+    else:
+        raise HTTPException(status_code=400, detail="bars_file must be .csv or .parquet")
+
+    bars["timestamp"] = pd.to_datetime(bars["timestamp"])
+    sym = symbol.upper()
+    bars = bars[bars["symbol"].astype(str).str.upper() == sym]
+    if bars.empty:
+        raise HTTPException(status_code=400, detail=f"no bars found for symbol {sym}")
+
+    try:
+        result = wf_run(
+            bars,
+            sym,
+            train_days=train_days,
+            test_days=test_days,
+            step_days=step_days,
+            initial_capital=initial_capital,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "windows": [
+            {
+                "period": w.period,
+                "is_sharpe": w.is_sharpe,
+                "oos_sharpe": w.oos_sharpe,
+                "oos_pnl": w.oos_pnl,
+                "best_params": w.best_params,
+            }
+            for w in result.windows
+        ],
+        "wf_efficiency": result.wf_efficiency,
+        "verdict": result.verdict,
+        "param_stability": result.param_stability,
+    }
+
+
 @app.websocket("/ws/state")
 async def ws_state(websocket: WebSocket) -> None:
     await websocket.accept()
