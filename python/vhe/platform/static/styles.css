@@ -950,3 +950,57 @@ body::before {
   .header { flex-direction: column; align-items: stretch; }
   .strategy-meta { grid-template-columns: 1fr; }
 }
+
+/* ── Risk Tab ─────────────────────────────────────────────────── */
+.risk-header { padding: 20px 24px 0; display: flex; flex-direction: column; gap: 16px; }
+.risk-title { margin: 0; font: 600 18px var(--sans); color: var(--text); }
+.risk-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.risk-input {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font: 13px var(--mono);
+  padding: 8px 12px;
+  border-radius: 8px;
+  min-width: 180px;
+}
+.risk-input::placeholder { color: var(--faint); }
+.risk-error {
+  margin: 12px 24px;
+  padding: 10px 14px;
+  background: rgba(255,107,107,0.08);
+  border: 1px solid rgba(255,107,107,0.3);
+  border-radius: 8px;
+  color: var(--red);
+  font: 13px var(--mono);
+}
+.risk-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  padding: 16px 24px 0;
+}
+.risk-metric-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.risk-metric-label { font: 600 10px var(--sans); color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.risk-metric-value { font: 600 18px var(--mono); color: var(--text); margin-top: 4px; }
+.risk-metric-value.good { color: var(--green); }
+.risk-metric-value.bad { color: var(--red); }
+.risk-metric-value.warn { color: var(--amber); }
+.risk-charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 16px 24px 24px;
+}
+.risk-chart-wrap {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+.risk-chart-label { font: 600 11px var(--sans); color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }

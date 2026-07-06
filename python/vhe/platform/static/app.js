@@ -944,3 +944,169 @@ function humanStatus(value) {
 function titleCase(value) {
   return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
 }
+
+// ── Monte Carlo Risk Tab ───────────────────────────────────────
+
+let mcHistChart = null;
+let mcCurvesChart = null;
+
+document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.getElementById("mc-run-btn");
+  if (btn) btn.addEventListener("click", runMonteCarlo);
+});
+
+async function runMonteCarlo() {
+  const symbol = document.getElementById("mc-symbol")?.value?.trim();
+  const barsFile = document.getElementById("mc-bars-file")?.value?.trim();
+  const nSims = parseInt(document.getElementById("mc-n-sims")?.value || "5000", 10);
+  const errorEl = document.getElementById("mc-error");
+  const resultsEl = document.getElementById("mc-results");
+
+  errorEl.style.display = "none";
+  resultsEl.style.display = "none";
+
+  if (!symbol || !barsFile) {
+    errorEl.textContent = "Symbol and bars_file are required.";
+    errorEl.style.display = "block";
+    return;
+  }
+
+  const btn = document.getElementById("mc-run-btn");
+  btn.textContent = "Running…";
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch("/api/backtest/monte-carlo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbol, bars_file: barsFile, n_sims: nSims }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || resp.statusText);
+    }
+    const data = await resp.json();
+    renderMCResults(data);
+  } catch (err) {
+    errorEl.textContent = `Error: ${err.message}`;
+    errorEl.style.display = "block";
+  } finally {
+    btn.textContent = "Run MC";
+    btn.disabled = false;
+  }
+}
+
+function renderMCResults(data) {
+  const resultsEl = document.getElementById("mc-results");
+  const metricsEl = document.getElementById("mc-metrics");
+  const ic = 75000;
+
+  const pnlP50 = data.pnl_percentiles?.p50 ?? 0;
+  const pClass = pnlP50 >= 0 ? "good" : "bad";
+  const ruinClass = data.p_ruin < 0.05 ? "good" : data.p_ruin < 0.15 ? "warn" : "bad";
+
+  metricsEl.innerHTML = [
+    { label: "Median P&L", value: formatMoney(pnlP50), cls: pClass },
+    { label: "VaR 95%", value: formatMoney(data.var_95 - ic), cls: "bad" },
+    { label: "CVaR 95%", value: formatMoney(data.cvar_95 - ic), cls: "bad" },
+    { label: "Max DD P95", value: `${(data.drawdown_p95 * 100).toFixed(1)}%`, cls: data.drawdown_p95 > 0.05 ? "warn" : "good" },
+    { label: "P(Ruin)", value: `${(data.p_ruin * 100).toFixed(1)}%`, cls: ruinClass },
+    { label: "Kelly f*", value: `${(data.kelly_fraction * 100).toFixed(1)}%`, cls: "good" },
+    { label: "Trades", value: String(data.trade_count), cls: "" },
+    { label: "Simulations", value: String(data.sim_count), cls: "" },
+  ].map(({ label, value, cls }) => `
+    <div class="risk-metric-card">
+      <div class="risk-metric-label">${label}</div>
+      <div class="risk-metric-value ${cls}">${value}</div>
+    </div>
+  `).join("");
+
+  renderMCHistogram(data);
+  renderMCCurves(data, ic);
+  resultsEl.style.display = "block";
+}
+
+function formatMoney(v) {
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v);
+}
+
+function renderMCHistogram(data) {
+  const canvas = document.getElementById("mc-hist-canvas");
+  if (!canvas) return;
+  if (mcHistChart) { mcHistChart.destroy(); mcHistChart = null; }
+
+  const pctKeys = ["p5", "p25", "p50", "p75", "p95"];
+  const pctVals = pctKeys.map((k) => data.pnl_percentiles[k]);
+
+  mcHistChart = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: pctKeys.map(k => k.toUpperCase()),
+      datasets: [{
+        label: "P&L (₹)",
+        data: pctVals,
+        backgroundColor: pctVals.map((v) => v >= 0 ? "rgba(0,208,156,0.6)" : "rgba(255,107,107,0.6)"),
+        borderColor: pctVals.map((v) => v >= 0 ? "#00d09c" : "#ff6b6b"),
+        borderWidth: 1,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: "#8b97a8" }, grid: { color: "rgba(148,163,184,0.08)" } },
+        y: { ticks: { color: "#8b97a8" }, grid: { color: "rgba(148,163,184,0.08)" } },
+      },
+    },
+  });
+}
+
+function renderMCCurves(data, ic) {
+  const canvas = document.getElementById("mc-curves-canvas");
+  if (!canvas) return;
+  if (mcCurvesChart) { mcCurvesChart.destroy(); mcCurvesChart = null; }
+
+  const curves = (data.equity_curves || []).slice(0, 50);
+  if (!curves.length) return;
+  const n = curves[0].length;
+  const labels = Array.from({ length: n }, (_, i) => i);
+
+  const datasets = curves.map(() => ({
+    data: curves[0],
+    borderColor: "rgba(56,126,209,0.15)",
+    borderWidth: 1,
+    pointRadius: 0,
+    tension: 0.2,
+  }));
+
+  // Replace each dataset data with its own curve
+  curves.forEach((curve, idx) => { datasets[idx].data = curve; });
+
+  // Add median line
+  const median = labels.map((_, idx) => {
+    const vals = curves.map((c) => c[idx] ?? ic).sort((a, b) => a - b);
+    return vals[Math.floor(vals.length / 2)];
+  });
+  datasets.push({
+    label: "Median",
+    data: median,
+    borderColor: "#00d09c",
+    borderWidth: 2,
+    pointRadius: 0,
+    tension: 0.2,
+  });
+
+  mcCurvesChart = new Chart(canvas, {
+    type: "line",
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      animation: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { display: false },
+        y: { ticks: { color: "#8b97a8" }, grid: { color: "rgba(148,163,184,0.08)" } },
+      },
+    },
+  });
+}

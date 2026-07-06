@@ -24,6 +24,7 @@
           <button type="button" class="nav-item" data-panel="strategies">Strategies</button>
           <button type="button" class="nav-item" data-panel="execution">Execution</button>
           <button type="button" class="nav-item" data-panel="activity">Activity</button>
+          <button type="button" class="nav-item" data-panel="risk">Risk</button>
         </nav>
         <div class="sidebar-meta">
           <div class="meta-row"><span>Phase</span><strong id="phase-label">0</strong></div>
@@ -197,8 +198,35 @@
             <div id="events" class="activity-stream empty-state"><span>No events yet</span></div>
           </div>
         </section>
+
+        <section class="view" data-view="risk">
+          <div class="risk-header">
+            <h2 class="risk-title">Monte Carlo Risk Analysis</h2>
+            <div class="risk-controls">
+              <input id="mc-symbol" class="risk-input" placeholder="Symbol e.g. RELIANCE" />
+              <input id="mc-bars-file" class="risk-input" placeholder="bars_file e.g. data/RELIANCE.csv" />
+              <input id="mc-n-sims" class="risk-input" type="number" value="5000" min="100" max="100000" />
+              <button id="mc-run-btn" class="ctrl-btn primary">Run MC</button>
+            </div>
+          </div>
+          <div id="mc-error" class="risk-error" style="display:none"></div>
+          <div id="mc-results" style="display:none">
+            <div class="risk-metrics-grid" id="mc-metrics"></div>
+            <div class="risk-charts-row">
+              <div class="risk-chart-wrap">
+                <div class="risk-chart-label">P&amp;L Distribution</div>
+                <canvas id="mc-hist-canvas" height="220"></canvas>
+              </div>
+              <div class="risk-chart-wrap">
+                <div class="risk-chart-label">Equity Curve Scenarios</div>
+                <canvas id="mc-curves-canvas" height="220"></canvas>
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
-    <script src="/static/app.js?v=26"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+    <script src="/static/app.js?v=27"></script>
   </body>
 </html>
