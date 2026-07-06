@@ -100,6 +100,15 @@ class PlatformDatabase:
                     fill_id TEXT NOT NULL,
                     UNIQUE(session_id, fill_id)
                 );
+
+                CREATE TABLE IF NOT EXISTS users (
+                    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                    google_id           TEXT UNIQUE NOT NULL,
+                    email               TEXT UNIQUE NOT NULL,
+                    name                TEXT NOT NULL DEFAULT '',
+                    virtual_capital_inr INTEGER NOT NULL DEFAULT 75000,
+                    created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                );
                 """
             )
 
@@ -372,3 +381,37 @@ class PlatformDatabase:
                 (session_id,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def upsert_user(self, google_id: str, email: str, name: str) -> int:
+        with self.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO users (google_id, email, name)
+                VALUES (?, ?, ?)
+                ON CONFLICT(google_id) DO UPDATE SET
+                    email = excluded.email,
+                    name  = excluded.name
+                """,
+                (google_id, email, name),
+            )
+            row = conn.execute(
+                "SELECT id FROM users WHERE google_id = ?", (google_id,)
+            ).fetchone()
+        return int(row["id"])
+
+    def get_user(self, user_id: int) -> dict | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT id, email, name, virtual_capital_inr, created_at FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return dict(row)
+
+    def update_virtual_capital(self, user_id: int, capital_inr: int) -> None:
+        with self.connection() as conn:
+            conn.execute(
+                "UPDATE users SET virtual_capital_inr = ? WHERE id = ?",
+                (capital_inr, user_id),
+            )

@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket
-from fastapi.responses import HTMLResponse, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+from vhe.auth.middleware import require_auth
 
 from vhe.backtest.models import Order, OrderSide, OrderType
 from vhe.config.env import load_env_file
@@ -274,6 +276,79 @@ async def run_walk_forward(
         "verdict": result.verdict,
         "param_stability": result.param_stability,
     }
+
+
+# ── Auth routes ──────────────────────────────────────────────────
+
+_CALLBACK_PATH = "/auth/google/callback"
+
+
+def _callback_uri(request: Request) -> str:
+    return str(request.base_url).rstrip("/") + _CALLBACK_PATH
+
+
+@app.get("/auth/google/login")
+async def google_login(request: Request) -> RedirectResponse:
+    from vhe.auth.google_oauth import get_login_url
+    url = get_login_url(redirect_uri=_callback_uri(request))
+    return RedirectResponse(url=url)
+
+
+@app.get(_CALLBACK_PATH)
+async def google_callback(request: Request, code: str = "") -> RedirectResponse:
+    from vhe.auth.google_oauth import exchange_code
+    from vhe.auth.jwt_utils import create_token
+
+    if not code:
+        return RedirectResponse(url="/?error=no_code")
+    try:
+        profile = await exchange_code(code, redirect_uri=_callback_uri(request))
+    except Exception:
+        return RedirectResponse(url="/?error=oauth_failed")
+
+    if runtime.database is None:
+        return RedirectResponse(url="/?error=no_db")
+
+    user_id = runtime.database.upsert_user(profile.google_id, profile.email, profile.name)
+    token = create_token(user_id=user_id, email=profile.email, name=profile.name)
+
+    response = RedirectResponse(url="/dashboard")
+    response.set_cookie(
+        key="vhe_session",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        max_age=7 * 24 * 3600,
+    )
+    return response
+
+
+@app.post("/auth/logout")
+async def logout() -> JSONResponse:
+    response = JSONResponse({"ok": True})
+    response.delete_cookie("vhe_session")
+    return response
+
+
+@app.get("/api/me")
+async def api_me(claims=Depends(require_auth)) -> dict:
+    if runtime.database is None:
+        raise HTTPException(status_code=503, detail="database unavailable")
+    user = runtime.database.get_user(claims.user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    return user
+
+
+@app.put("/api/me/capital")
+async def update_capital(body: dict, claims=Depends(require_auth)) -> dict:
+    capital = int(body.get("virtual_capital_inr", 75000))
+    if not (25_000 <= capital <= 500_000):
+        raise HTTPException(status_code=422, detail="capital must be between 25000 and 500000")
+    if runtime.database is None:
+        raise HTTPException(status_code=503, detail="database unavailable")
+    runtime.database.update_virtual_capital(claims.user_id, capital)
+    return runtime.database.get_user(claims.user_id)
 
 
 @app.websocket("/ws/state")
