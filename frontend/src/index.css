@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #080b10;
+    color: #e8edf4;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 12% 8%, rgba(56, 126, 209, 0.12), transparent 28%),
+      radial-gradient(circle at 88% 0%, rgba(0, 208, 156, 0.08), transparent 24%);
+    z-index: 0;
+  }
+}
