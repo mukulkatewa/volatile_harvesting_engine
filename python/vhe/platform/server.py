@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from vhe.backtest.models import Order, OrderSide, OrderType
 from vhe.config.env import load_env_file
@@ -141,6 +142,76 @@ async def demo_fill() -> dict:
 @app.get("/favicon.ico")
 async def favicon() -> Response:
     return Response(status_code=204)
+
+
+class MonteCarloRequest(BaseModel):
+    symbol: str
+    bars_file: str
+    n_sims: int = 10_000
+    initial_capital: float = 75_000.0
+
+
+@app.post("/api/backtest/monte-carlo")
+async def run_monte_carlo(req: MonteCarloRequest) -> dict:
+    import pandas as pd
+    from datetime import time
+    from pathlib import Path as FilePath
+
+    from vhe.backtest.engine import EventDrivenBacktester
+    from vhe.backtest.monte_carlo import run as mc_run
+    from vhe.strategies.adaptive_grid import AdaptiveGridConfig, AdaptiveGridStrategy
+
+    if req.n_sims > 100_000:
+        raise HTTPException(status_code=422, detail="n_sims must be <= 100,000")
+
+    bars_path = FilePath(req.bars_file)
+    if not bars_path.is_absolute():
+        bars_path = STATIC_DIR.parents[3] / req.bars_file
+    if not bars_path.exists():
+        raise HTTPException(status_code=400, detail=f"bars_file not found: {req.bars_file}")
+
+    if bars_path.suffix.lower() == ".csv":
+        bars = pd.read_csv(bars_path)
+    elif bars_path.suffix.lower() == ".parquet":
+        bars = pd.read_parquet(bars_path)
+    else:
+        raise HTTPException(status_code=400, detail="bars_file must be .csv or .parquet")
+
+    bars["timestamp"] = pd.to_datetime(bars["timestamp"])
+    symbol = req.symbol.upper()
+    bars = bars[bars["symbol"].astype(str).str.upper() == symbol]
+    if bars.empty:
+        raise HTTPException(status_code=400, detail=f"no bars found for symbol {symbol}")
+
+    strategy = AdaptiveGridStrategy(
+        config=AdaptiveGridConfig(
+            symbol_capital=req.initial_capital * 0.70,
+            force_exit_time=time(15, 10),
+        ),
+        symbol=symbol,
+    )
+    backtester = EventDrivenBacktester(strategy=strategy, initial_cash=req.initial_capital)
+    backtester.run(bars)
+
+    trades = backtester.ledger.trades
+    if len(trades) < 10:
+        raise HTTPException(
+            status_code=400,
+            detail=f"backtest produced only {len(trades)} trades — need at least 10",
+        )
+
+    result = mc_run(trades, initial_capital=req.initial_capital, n_sims=req.n_sims)
+    return {
+        "var_95": result.var_95,
+        "cvar_95": result.cvar_95,
+        "p_ruin": result.p_ruin,
+        "drawdown_p95": result.drawdown_p95,
+        "kelly_fraction": result.kelly_fraction,
+        "pnl_percentiles": result.pnl_percentiles,
+        "equity_curves": result.equity_curves,
+        "sim_count": result.sim_count,
+        "trade_count": result.trade_count,
+    }
 
 
 @app.websocket("/ws/state")
