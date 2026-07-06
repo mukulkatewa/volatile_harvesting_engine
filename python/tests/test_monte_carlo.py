@@ -26,7 +26,8 @@ def test_positive_edge_low_ruin_probability() -> None:
 
 
 def test_negative_edge_high_ruin_probability() -> None:
-    result = run(_trades(2, 50.0, 8, -100.0), initial_capital=10_000, n_sims=1000, rng_seed=42)
+    # worst case: 8 × (-1000) = -8000 loss → equity = 2000, well below 5000 ruin floor
+    result = run(_trades(2, 500.0, 8, -1000.0), initial_capital=10_000, n_sims=1000, rng_seed=42)
     assert result.p_ruin > 0.30
 
 

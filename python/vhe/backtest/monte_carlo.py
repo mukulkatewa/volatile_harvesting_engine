@@ -56,7 +56,7 @@ def run(
             curve.append(equity)
         final_equities.append(equity)
         max_drawdowns.append(max_dd)
-        if equity < initial_capital:
+        if equity < initial_capital * 0.5:
             ruin_count += 1
         if i < 100:
             sampled_curves.append(curve)
