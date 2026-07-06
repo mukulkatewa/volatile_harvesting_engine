@@ -1004,3 +1004,15 @@ body::before {
   padding: 16px;
 }
 .risk-chart-label { font: 600 11px var(--sans); color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
+.risk-divider { height: 1px; background: var(--border); margin: 24px 24px 0; }
+.wf-summary-row { display: flex; gap: 12px; flex-wrap: wrap; padding: 16px 24px 0; align-items: center; }
+.wf-badge {
+  padding: 6px 14px;
+  border-radius: 20px;
+  font: 700 12px var(--mono);
+}
+.wf-badge.good { background: rgba(0,208,156,0.1); color: var(--green); border: 1px solid rgba(0,208,156,0.3); }
+.wf-badge.warn { background: rgba(240,180,41,0.1); color: var(--amber); border: 1px solid rgba(240,180,41,0.3); }
+.wf-badge.bad  { background: rgba(255,107,107,0.1); color: var(--red);   border: 1px solid rgba(255,107,107,0.3); }
+.wf-efficiency-label { font: 13px var(--mono); color: var(--muted); }
+.wf-table-wrap { padding: 12px 24px 24px; overflow-x: auto; }

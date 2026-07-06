@@ -223,6 +223,36 @@
               </div>
             </div>
           </div>
+          <div class="risk-divider"></div>
+          <div class="risk-header">
+            <h2 class="risk-title">Walk-Forward Validation</h2>
+            <div class="risk-controls">
+              <input id="wf-symbol" class="risk-input" placeholder="Symbol e.g. RELIANCE" />
+              <input id="wf-bars-file" class="risk-input" placeholder="bars_file e.g. data/RELIANCE.csv" />
+              <input id="wf-train-days" class="risk-input" type="number" value="60" min="10" max="250" style="width:90px" />
+              <input id="wf-test-days" class="risk-input" type="number" value="15" min="5" max="60" style="width:90px" />
+              <button id="wf-run-btn" class="ctrl-btn primary">Run WF</button>
+            </div>
+          </div>
+          <div id="wf-error" class="risk-error" style="display:none"></div>
+          <div id="wf-results" style="display:none">
+            <div class="wf-summary-row" id="wf-summary"></div>
+            <div class="wf-table-wrap">
+              <table class="data-table compact" id="wf-table">
+                <thead>
+                  <tr>
+                    <th>Period</th>
+                    <th>IS Sharpe</th>
+                    <th>OOS Sharpe</th>
+                    <th>OOS P&amp;L</th>
+                    <th>Best ATR Mult</th>
+                    <th>Max Levels</th>
+                  </tr>
+                </thead>
+                <tbody id="wf-tbody"></tbody>
+              </table>
+            </div>
+          </div>
         </section>
       </main>
     </div>

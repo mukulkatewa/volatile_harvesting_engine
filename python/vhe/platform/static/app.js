@@ -1110,3 +1110,83 @@ function renderMCCurves(data, ic) {
     },
   });
 }
+
+// ── Walk-Forward Validation Tab ───────────────────────────────
+
+document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.getElementById("wf-run-btn");
+  if (btn) btn.addEventListener("click", runWalkForward);
+});
+
+async function runWalkForward() {
+  const symbol = document.getElementById("wf-symbol")?.value?.trim();
+  const barsFile = document.getElementById("wf-bars-file")?.value?.trim();
+  const trainDays = parseInt(document.getElementById("wf-train-days")?.value || "60", 10);
+  const testDays = parseInt(document.getElementById("wf-test-days")?.value || "15", 10);
+  const errorEl = document.getElementById("wf-error");
+  const resultsEl = document.getElementById("wf-results");
+
+  errorEl.style.display = "none";
+  resultsEl.style.display = "none";
+
+  if (!symbol || !barsFile) {
+    errorEl.textContent = "Symbol and bars_file are required.";
+    errorEl.style.display = "block";
+    return;
+  }
+
+  const btn = document.getElementById("wf-run-btn");
+  btn.textContent = "Running…";
+  btn.disabled = true;
+
+  try {
+    const params = new URLSearchParams({ symbol, bars_file: barsFile, train_days: trainDays, test_days: testDays });
+    const resp = await fetch(`/api/backtest/walk-forward?${params}`);
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || resp.statusText);
+    }
+    const data = await resp.json();
+    renderWFResults(data);
+  } catch (err) {
+    errorEl.textContent = `Error: ${err.message}`;
+    errorEl.style.display = "block";
+  } finally {
+    btn.textContent = "Run WF";
+    btn.disabled = false;
+  }
+}
+
+function renderWFResults(data) {
+  const summaryEl = document.getElementById("wf-summary");
+  const tbodyEl = document.getElementById("wf-tbody");
+  const resultsEl = document.getElementById("wf-results");
+
+  const wfe = data.wf_efficiency ?? 0;
+  const verdictClass = data.verdict === "Not overfit" ? "good" : data.verdict === "Marginal" ? "warn" : "bad";
+
+  summaryEl.innerHTML = `
+    <span class="wf-badge ${verdictClass}">${data.verdict}</span>
+    <span class="wf-efficiency-label">WF Efficiency: <strong>${wfe.toFixed(3)}</strong></span>
+    <span class="wf-efficiency-label">Stable ATR Mult: <strong>${data.param_stability?.atr_multiplier ?? "—"}</strong></span>
+    <span class="wf-efficiency-label">Stability Score: <strong>${((data.param_stability?.stability_score ?? 0) * 100).toFixed(0)}%</strong></span>
+    <span class="wf-efficiency-label">${data.windows?.length ?? 0} windows</span>
+  `;
+
+  tbodyEl.innerHTML = (data.windows || []).map((w) => {
+    const oosCls = w.oos_sharpe >= 0 ? "" : "sell";
+    const pnlCls = w.oos_pnl >= 0 ? "buy" : "sell";
+    return `
+      <tr>
+        <td style="font:11px var(--mono);color:var(--muted)">${w.period}</td>
+        <td>${w.is_sharpe.toFixed(2)}</td>
+        <td class="${oosCls}">${w.oos_sharpe.toFixed(2)}</td>
+        <td class="${pnlCls}">${formatMoney(w.oos_pnl)}</td>
+        <td>${w.best_params?.atr_multiplier ?? "—"}</td>
+        <td>${w.best_params?.max_levels ?? "—"}</td>
+      </tr>
+    `;
+  }).join("");
+
+  resultsEl.style.display = "block";
+}
