@@ -52,10 +52,13 @@ def test_equity_curves_at_most_100() -> None:
     assert len(result.equity_curves) > 0
 
 
-def test_var_below_median_for_positive_edge() -> None:
+def test_var_95_is_in_plausible_range_for_positive_edge() -> None:
     result = run(_trades(7, 80.0, 3, -60.0), initial_capital=10_000, n_sims=2000, rng_seed=7)
-    # var_95 is the 5th-percentile equity; median equity should be higher
-    assert result.var_95 <= result.pnl_percentiles["p50"] + 10_000
+    # For a positive-edge strategy, the 5th-pct equity should not be near ruin floor
+    # and should be below the median equity
+    median_equity = result.pnl_percentiles["p50"] + 10_000
+    assert result.var_95 < median_equity  # 5th pct is below median by definition
+    assert result.var_95 > 10_000 * 0.5  # should not be at ruin level for a positive-edge strategy
 
 
 def test_pnl_percentiles_keys_present() -> None:

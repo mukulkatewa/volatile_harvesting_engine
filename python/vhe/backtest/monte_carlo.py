@@ -65,7 +65,8 @@ def run(
     dd_arr = np.array(max_drawdowns, dtype=np.float64)
 
     var_95 = float(np.percentile(arr, 5))
-    tail = arr[arr <= var_95]
+    cutoff = float(np.percentile(arr, 5, method="lower"))
+    tail = arr[arr <= cutoff]
     cvar_95 = float(tail.mean()) if tail.size > 0 else var_95
 
     winners = [t for t in trades if t.pnl > 0]
