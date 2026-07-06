@@ -141,6 +141,13 @@ async def demo_fill() -> dict:
     return runtime.state.snapshot()
 
 
+@app.get("/dashboard", response_class=HTMLResponse)
+@app.get("/dashboard/{rest:path}", response_class=HTMLResponse)
+@app.get("/profile", response_class=HTMLResponse)
+async def spa_fallback() -> str:
+    return (STATIC_DIR / "index.html").read_text()
+
+
 @app.get("/favicon.ico")
 async def favicon() -> Response:
     return Response(status_code=204)
