@@ -38,7 +38,7 @@ export function Terminal({ state, postControl }: Props) {
   ];
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-3 sm:p-6 space-y-5">
       {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {statCards.map(({ label, value, cls, glow }) => (

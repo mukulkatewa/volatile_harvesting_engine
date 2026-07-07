@@ -5,7 +5,7 @@ const INR = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR",
 export function Execution({ state, postControl }: { state: VHEState; postControl: (e: string) => Promise<void> }) {
   const fills = [...(state.fills ?? [])].reverse().slice(0, 25);
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold font-sans text-text-primary">Paper Fill Tape</h2>
         <button onClick={() => postControl("/api/control/demo-fill").catch(console.error)}

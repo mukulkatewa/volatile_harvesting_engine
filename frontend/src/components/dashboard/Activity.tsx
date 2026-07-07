@@ -9,7 +9,7 @@ export function Activity({ state }: { state: VHEState }) {
     success: "text-vhe-green",
   };
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-6">
       <h2 className="text-lg font-bold font-sans text-text-primary">Event Log</h2>
       {events.length === 0 ? (
         <p className="text-text-muted font-mono text-sm">No events yet.</p>

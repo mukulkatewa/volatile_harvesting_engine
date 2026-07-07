@@ -5,7 +5,7 @@ const INR = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR",
 export function Strategies({ state }: { state: VHEState }) {
   const plans = Object.values(state.plans ?? {});
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-6">
       <h2 className="text-lg font-bold font-sans text-text-primary">Grid Plans</h2>
       {plans.length === 0 ? (
         <p className="text-text-muted font-mono text-sm">No active grid plans.</p>

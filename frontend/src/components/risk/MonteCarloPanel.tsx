@@ -46,15 +46,15 @@ export function MonteCarloPanel() {
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-bold font-sans text-text-primary">Monte Carlo Risk Analysis</h2>
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex flex-col sm:flex-row gap-2 flex-wrap">
         <input value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="Symbol e.g. RELIANCE"
-          className="bg-bg-card border border-white/15 text-text-primary font-mono text-sm px-3 py-2 rounded-lg placeholder:text-text-faint min-w-[180px]" />
+          className="bg-bg-card border border-white/15 text-text-primary font-mono text-sm px-3 py-2 rounded-lg placeholder:text-text-faint w-full sm:w-auto sm:min-w-[180px]" />
         <input value={barsFile} onChange={(e) => setBarsFile(e.target.value)} placeholder="data/RELIANCE.csv"
-          className="bg-bg-card border border-white/15 text-text-primary font-mono text-sm px-3 py-2 rounded-lg placeholder:text-text-faint min-w-[200px]" />
+          className="bg-bg-card border border-white/15 text-text-primary font-mono text-sm px-3 py-2 rounded-lg placeholder:text-text-faint w-full sm:w-auto sm:min-w-[200px]" />
         <input value={nSims} onChange={(e) => setNSims(Number(e.target.value))} type="number" min={100} max={100000}
-          className="bg-bg-card border border-white/15 text-text-primary font-mono text-sm px-3 py-2 rounded-lg w-28" />
+          className="bg-bg-card border border-white/15 text-text-primary font-mono text-sm px-3 py-2 rounded-lg w-full sm:w-28" />
         <button onClick={run} disabled={loading}
-          className="px-4 py-2 rounded-lg bg-vhe-green/10 border border-vhe-green/30 text-vhe-green text-sm font-semibold font-sans hover:bg-vhe-green/20 disabled:opacity-50 transition-colors">
+          className="px-4 py-2 rounded-lg bg-vhe-green/10 border border-vhe-green/30 text-vhe-green text-sm font-semibold font-sans hover:bg-vhe-green/20 disabled:opacity-50 transition-colors w-full sm:w-auto">
           {loading ? "Running…" : "Run MC"}
         </button>
       </div>

@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Activity, LayoutDashboard, LogOut, ShieldAlert, TrendingUp, User, Zap } from "lucide-react";
+import { Activity, LayoutDashboard, LogOut, ShieldAlert, TrendingUp, User, X, Zap } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 
 const NAV = [
@@ -10,20 +10,29 @@ const NAV = [
   { label: "Risk",       to: "/dashboard/risk",       icon: ShieldAlert },
 ];
 
-export function Sidebar() {
+export function Sidebar({ onClose }: { onClose?: () => void }) {
   const { user, logout } = useAuth();
 
   return (
     <aside className="sticky top-0 h-screen w-[220px] flex flex-col gap-6 px-4 py-5 border-r border-vhe-green/[0.08] bg-bg-deep/95 backdrop-blur-xl z-10">
       {/* Logo */}
       <div className="flex items-center gap-3 px-1">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm bg-gradient-to-br from-vhe-blue to-vhe-green shadow-lg shadow-vhe-green/20 text-bg-deep">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm bg-gradient-to-br from-vhe-blue to-vhe-green shadow-lg shadow-vhe-green/20 text-bg-deep shrink-0">
           V
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <strong className="block text-[15px] text-text-primary font-sans font-bold leading-tight">VHE</strong>
           <span className="text-text-faint text-[10px] font-mono uppercase tracking-widest">Volatility Engine</span>
         </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="p-1 text-text-faint hover:text-text-primary transition-colors"
+            aria-label="Close menu"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* Navigation */}

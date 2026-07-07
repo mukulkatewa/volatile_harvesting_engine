@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Settings, User, LogOut, Wifi, WifiOff, ChevronRight, X } from "lucide-react";
+import { Bell, Menu, Settings, User, LogOut, Wifi, WifiOff, ChevronRight, X } from "lucide-react";
 import type { VHEState } from "../../types/api";
 import { useAuth } from "../../hooks/useAuth";
 
@@ -17,7 +17,7 @@ const SEV_CLS: Record<string, string> = {
 
 const INR = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 
-export function Header({ state }: { state: VHEState }) {
+export function Header({ state, onMenuOpen }: { state: VHEState; onMenuOpen?: () => void }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -69,12 +69,21 @@ export function Header({ state }: { state: VHEState }) {
   const recentEvents = [...events].reverse().slice(0, 15);
 
   return (
-    <header className="sticky top-0 z-10 flex items-center justify-between px-6 py-3 border-b border-white/[0.06] bg-bg-deep/90 backdrop-blur-xl">
-      {/* Left: clock + session status + connection */}
-      <div className="flex items-center gap-4">
-        <time className="font-mono text-[17px] font-semibold text-vhe-green tabular-nums">{clock}</time>
+    <header className="sticky top-0 z-10 flex items-center justify-between px-3 sm:px-6 py-3 border-b border-white/[0.06] bg-bg-deep/90 backdrop-blur-xl">
+      {/* Left: hamburger (mobile) + clock + session status + connection */}
+      <div className="flex items-center gap-3">
+        {onMenuOpen && (
+          <button
+            onClick={onMenuOpen}
+            className="lg:hidden p-1.5 rounded-lg text-text-faint hover:text-text-primary hover:bg-white/[0.06] transition-all"
+            aria-label="Open menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        )}
+        <time className="font-mono text-[15px] sm:text-[17px] font-semibold text-vhe-green tabular-nums">{clock}</time>
 
-        <span className={`text-[10px] font-bold font-mono px-3 py-1 rounded-full border uppercase tracking-wide ${sessionCls}`}>
+        <span className={`hidden sm:inline text-[10px] font-bold font-mono px-3 py-1 rounded-full border uppercase tracking-wide ${sessionCls}`}>
           {sessionStatus}
         </span>
 
@@ -84,7 +93,7 @@ export function Header({ state }: { state: VHEState }) {
           ) : (
             <WifiOff className="w-3.5 h-3.5 text-vhe-red" />
           )}
-          <span className={`text-[12px] font-sans ${state.connected ? "text-text-muted" : "text-vhe-red"}`}>
+          <span className={`hidden sm:inline text-[12px] font-sans ${state.connected ? "text-text-muted" : "text-vhe-red"}`}>
             {state.connected ? "Live" : "Reconnecting"}
           </span>
         </div>
