@@ -24,6 +24,7 @@ load_env_file()
 app = FastAPI(title="Volatility Harvesting Engine")
 runtime = PlatformRuntime.from_project_root()
 
+app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -311,8 +312,14 @@ def _callback_uri(request: Request) -> str:
 
 @app.get("/auth/google/login")
 async def google_login(request: Request) -> RedirectResponse:
+    import os
+    if not os.environ.get("GOOGLE_CLIENT_ID") or os.environ.get("GOOGLE_CLIENT_ID", "").startswith("your-"):
+        return RedirectResponse(url="/?error=oauth_not_configured")
     from vhe.auth.google_oauth import get_login_url
-    url = get_login_url(redirect_uri=_callback_uri(request))
+    try:
+        url = get_login_url(redirect_uri=_callback_uri(request))
+    except KeyError:
+        return RedirectResponse(url="/?error=oauth_not_configured")
     return RedirectResponse(url=url)
 
 
