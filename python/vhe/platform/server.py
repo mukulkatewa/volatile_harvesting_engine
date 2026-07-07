@@ -17,6 +17,8 @@ from vhe.platform.runtime import PlatformRuntime
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
+_INDEX_HTML: str | None = None
+
 load_env_file()
 
 app = FastAPI(title="Volatility Harvesting Engine")
@@ -144,8 +146,15 @@ async def demo_fill() -> dict:
 @app.get("/dashboard", response_class=HTMLResponse)
 @app.get("/dashboard/{rest:path}", response_class=HTMLResponse)
 @app.get("/profile", response_class=HTMLResponse)
-async def spa_fallback() -> str:
-    return (STATIC_DIR / "index.html").read_text()
+@app.get("/profile/{rest:path}", response_class=HTMLResponse)
+async def spa_fallback() -> HTMLResponse:
+    global _INDEX_HTML
+    if _INDEX_HTML is None:
+        index = STATIC_DIR / "index.html"
+        if not index.exists():
+            raise HTTPException(status_code=503, detail="Frontend not built — run npm run build")
+        _INDEX_HTML = index.read_text()
+    return HTMLResponse(_INDEX_HTML)
 
 
 @app.get("/favicon.ico")
@@ -164,7 +173,6 @@ class MonteCarloRequest(BaseModel):
 async def run_monte_carlo(req: MonteCarloRequest) -> dict:
     import pandas as pd
     from datetime import time
-    from pathlib import Path as FilePath
 
     from vhe.backtest.engine import EventDrivenBacktester
     from vhe.backtest.monte_carlo import run as mc_run
@@ -173,9 +181,13 @@ async def run_monte_carlo(req: MonteCarloRequest) -> dict:
     if req.n_sims > 100_000:
         raise HTTPException(status_code=422, detail="n_sims must be <= 100,000")
 
-    bars_path = FilePath(req.bars_file)
+    bars_path = Path(req.bars_file)
     if not bars_path.is_absolute():
         bars_path = STATIC_DIR.parents[3] / req.bars_file
+    bars_path = bars_path.resolve()
+    project_root = STATIC_DIR.parents[3].resolve()
+    if not bars_path.is_relative_to(project_root):
+        raise HTTPException(status_code=400, detail="bars_file must be within the project directory")
     if not bars_path.exists():
         raise HTTPException(status_code=400, detail=f"bars_file not found: {req.bars_file}")
 
@@ -233,13 +245,16 @@ async def run_walk_forward(
     initial_capital: float = 75_000.0,
 ) -> dict:
     import pandas as pd
-    from pathlib import Path as FilePath
 
     from vhe.backtest.walk_forward import run as wf_run
 
-    bars_path = FilePath(bars_file)
+    bars_path = Path(bars_file)
     if not bars_path.is_absolute():
         bars_path = STATIC_DIR.parents[3] / bars_file
+    bars_path = bars_path.resolve()
+    project_root = STATIC_DIR.parents[3].resolve()
+    if not bars_path.is_relative_to(project_root):
+        raise HTTPException(status_code=400, detail="bars_file must be within the project directory")
     if not bars_path.exists():
         raise HTTPException(status_code=400, detail=f"bars_file not found: {bars_file}")
 
