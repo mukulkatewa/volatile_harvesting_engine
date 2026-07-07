@@ -305,7 +305,8 @@ const LaserFlow: React.FC<LaserFlowProps> = ({
   };
 
   useEffect(() => {
-    const mount = mountRef.current!;
+    const mount = mountRef.current;
+    if (!mount) return;
     const renderer = new THREE.WebGLRenderer({
       antialias: false,
       alpha: false,

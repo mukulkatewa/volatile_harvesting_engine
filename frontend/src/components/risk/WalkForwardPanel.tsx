@@ -15,6 +15,8 @@ export function WalkForwardPanel() {
 
   const run = async () => {
     if (!symbol.trim() || !barsFile.trim()) { setError("Symbol and bars_file required"); return; }
+    if (!trainDays || trainDays < 10) { setError("Train days must be at least 10"); return; }
+    if (!testDays || testDays < 5) { setError("Test days must be at least 5"); return; }
     setError(null); setLoading(true);
     try {
       const r = await api.runWalkForward({ symbol: symbol.trim().toUpperCase(), bars_file: barsFile.trim(), train_days: trainDays, test_days: testDays });
@@ -71,8 +73,8 @@ export function WalkForwardPanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {result.windows.map((w, i) => (
-                    <tr key={i} className="border-t border-white/[0.04] hover:bg-white/[0.02]">
+                  {result.windows.map((w) => (
+                    <tr key={w.period} className="border-t border-white/[0.04] hover:bg-white/[0.02]">
                       <td className="px-4 py-2 font-mono text-text-faint text-xs">{w.period}</td>
                       <td className="px-4 py-2 font-mono text-right text-text-primary">{w.is_sharpe.toFixed(2)}</td>
                       <td className={`px-4 py-2 font-mono text-right ${w.oos_sharpe >= 0 ? "text-vhe-green" : "text-vhe-red"}`}>{w.oos_sharpe.toFixed(2)}</td>

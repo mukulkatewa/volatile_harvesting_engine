@@ -8,7 +8,7 @@ export function Execution({ state, postControl }: { state: VHEState; postControl
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold font-sans text-text-primary">Paper Fill Tape</h2>
-        <button onClick={() => postControl("/api/control/demo-fill")}
+        <button onClick={() => postControl("/api/control/demo-fill").catch(console.error)}
           className="px-3 py-1.5 rounded-lg border border-white/15 text-text-muted text-xs font-sans font-semibold hover:bg-white/5 transition-colors">
           Demo Fill
         </button>

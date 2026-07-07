@@ -15,8 +15,8 @@ export function Activity({ state }: { state: VHEState }) {
         <p className="text-text-muted font-mono text-sm">No events yet.</p>
       ) : (
         <div className="bg-bg-card rounded-xl border border-white/[0.08] divide-y divide-white/[0.04]">
-          {events.map((ev, i) => (
-            <div key={i} className="px-4 py-2.5 flex items-start gap-3">
+          {events.map((ev) => (
+            <div key={`${ev.timestamp}-${ev.message}`} className="px-4 py-2.5 flex items-start gap-3">
               <span className="font-mono text-[10px] text-text-faint pt-0.5 shrink-0">
                 {new Date(ev.timestamp).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: false })}
               </span>

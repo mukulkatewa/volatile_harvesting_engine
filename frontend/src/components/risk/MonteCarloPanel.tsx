@@ -18,6 +18,7 @@ export function MonteCarloPanel() {
 
   const run = async () => {
     if (!symbol.trim() || !barsFile.trim()) { setError("Symbol and bars_file required"); return; }
+    if (!nSims || nSims < 100) { setError("Simulations must be at least 100"); return; }
     setError(null); setLoading(true);
     try {
       const r = await api.runMonteCarlo({ symbol: symbol.trim().toUpperCase(), bars_file: barsFile.trim(), n_sims: nSims, initial_capital: 75000 });
@@ -31,11 +32,16 @@ export function MonteCarloPanel() {
     ? Object.entries(result.pnl_percentiles).map(([k, v]) => ({ label: k.toUpperCase(), value: v }))
     : [];
 
-  const curveData = result?.equity_curves?.[0]?.map((_, i) => ({
-    trade: i,
-    ...Object.fromEntries(result.equity_curves.slice(0, 20).map((c, j) => [`s${j}`, c[i]])),
-    median: [...result.equity_curves.slice(0, 20).map((c) => c[i])].sort((a, b) => a - b)[10] ?? 0,
-  })) ?? [];
+  const curveData = result?.equity_curves?.[0]?.map((_, i) => {
+    const slice = result.equity_curves.slice(0, 20);
+    const vals = slice.map((c) => c[i]).filter((v): v is number => v !== undefined);
+    const sorted = [...vals].sort((a, b) => a - b);
+    return {
+      trade: i,
+      ...Object.fromEntries(slice.map((c, j) => [`s${j}`, c[i] ?? null])),
+      median: sorted[Math.floor(sorted.length / 2)] ?? 0,
+    };
+  }) ?? [];
 
   return (
     <div className="space-y-6">

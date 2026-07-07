@@ -8,7 +8,7 @@ from vhe.sentiment.collectors.hackernews import HackerNewsCollector
 from vhe.sentiment.collectors.last30days_bridge import Last30DaysCollector
 from vhe.sentiment.collectors.reddit import RedditCollector
 from vhe.sentiment.engine import SentimentEngine
-from vhe.sentiment.models import SentimentAction, SentimentSnapshot, SentimentStatus, SymbolSentiment
+from vhe.sentiment.models import BuzzItem, SentimentAction, SentimentSnapshot, SentimentStatus, SymbolSentiment
 from vhe.sentiment.scoring import portfolio_snapshot
 from vhe.sentiment.store import SentimentStore
 from vhe.sentiment.trending import rank_symbols
@@ -51,7 +51,7 @@ class SentimentService:
     _symbols: dict[str, SymbolSentiment] = field(default_factory=dict)
     _last_refresh_at: datetime | None = None
     _sources_active: tuple[str, ...] = ()
-    _refresh_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    _refresh_lock: asyncio.Lock | None = field(default=None)
     _refresh_task: asyncio.Task | None = None
     _last30days_collector: Last30DaysCollector | None = field(init=False, default=None)
     _last30days_rotation: int = 0
@@ -89,8 +89,7 @@ class SentimentService:
             return
         if self._refresh_task is not None and not self._refresh_task.done():
             return
-        loop = asyncio.get_event_loop()
-        self._refresh_task = loop.create_task(self._refresh_loop(), name="vhe-sentiment")
+        self._refresh_task = asyncio.create_task(self._refresh_loop(), name="vhe-sentiment")
 
     async def _refresh_loop(self) -> None:
         await asyncio.sleep(3.0)
@@ -102,6 +101,8 @@ class SentimentService:
             await asyncio.sleep(max(self.config.refresh_minutes * 60, 60))
 
     async def refresh_async(self) -> SentimentSnapshot:
+        if self._refresh_lock is None:
+            self._refresh_lock = asyncio.Lock()
         async with self._refresh_lock:
             return await asyncio.to_thread(self.refresh_sync)
 

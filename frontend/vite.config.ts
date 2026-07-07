@@ -9,7 +9,7 @@ export default defineConfig({
   },
   build: {
     outDir: "../python/vhe/platform/static",
-    emptyOutDir: false,
+    emptyOutDir: true,
   },
   server: {
     port: 5173,

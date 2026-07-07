@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { Component, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Activity,
@@ -90,6 +91,15 @@ function scrollTo(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
 }
 
+class LaserErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) return null;
+    return this.props.children;
+  }
+}
+
 export function LandingPage() {
   const { user, isLoading } = useAuth();
   const navigate = useNavigate();
@@ -118,6 +128,7 @@ export function LandingPage() {
       <section className="relative min-h-screen flex flex-col overflow-hidden w-full">
         {/* WebGL laser background */}
         <div className="absolute inset-0 z-0">
+          <LaserErrorBoundary>
           <LaserFlow
             color="#00d09c"
             horizontalBeamOffset={0.25}
@@ -136,6 +147,7 @@ export function LandingPage() {
             mouseTiltStrength={0.005}
             className="w-full h-full"
           />
+          </LaserErrorBoundary>
         </div>
 
         {/* Ambient glow */}

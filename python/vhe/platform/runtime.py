@@ -54,6 +54,7 @@ class PlatformRuntime:
     _last_session_phase: SessionPhase | None = None
     _last_stats_at: datetime | None = None
     _feed_started_at: datetime | None = None
+    _indicator_seed_cache: dict | None = field(default=None, init=False)
 
     @classmethod
     def from_project_root(cls, project_root: Path | None = None, live_config_name: str | None = None) -> PlatformRuntime:

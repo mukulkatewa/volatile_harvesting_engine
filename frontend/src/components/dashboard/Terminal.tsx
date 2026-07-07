@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Activity, PauseCircle, PlayCircle, RotateCcw, Skull, Zap } from "lucide-react";
 import type { VHEState } from "../../types/api";
 
@@ -15,8 +16,16 @@ const CONTROLS = [
 ];
 
 export function Terminal({ state, postControl }: Props) {
+  const [ctrlError, setCtrlError] = useState<string | null>(null);
   const p = state.portfolio;
   const ctrl = state.controls;
+
+  const handleControl = (endpoint: string) => {
+    setCtrlError(null);
+    postControl(endpoint).catch((err: unknown) => {
+      setCtrlError(err instanceof Error ? err.message : "Control request failed");
+    });
+  };
   const equity = p.equity ?? p.cash ?? 0;
   const pnl = equity - 75000;
   const pnlPos = pnl >= 0;
@@ -72,7 +81,7 @@ export function Terminal({ state, postControl }: Props) {
         {CONTROLS.map(({ label, endpoint, icon: Icon, cls }) => (
           <button
             key={label}
-            onClick={() => postControl(endpoint)}
+            onClick={() => handleControl(endpoint)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-sans font-semibold transition-colors ${cls}`}
           >
             <Icon className="w-3.5 h-3.5" />
@@ -80,6 +89,9 @@ export function Terminal({ state, postControl }: Props) {
           </button>
         ))}
       </div>
+      {ctrlError && (
+        <div className="text-xs font-mono text-vhe-red bg-vhe-red/10 border border-vhe-red/30 rounded-lg px-3 py-2">{ctrlError}</div>
+      )}
 
       {/* Live quotes */}
       {Object.keys(state.quotes).length > 0 && (

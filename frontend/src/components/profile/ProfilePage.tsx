@@ -2,13 +2,11 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../hooks/useAuth";
 import { api } from "../../api/client";
-import { useWebSocket } from "../../hooks/useWebSocket";
 
 const INR = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 
 export function ProfilePage() {
   const { user, logout } = useAuth();
-  const { state } = useWebSocket();
   const qc = useQueryClient();
   const [capital, setCapital] = useState(user?.virtual_capital_inr ?? 75000);
   const [saving, setSaving] = useState(false);
@@ -17,11 +15,9 @@ export function ProfilePage() {
 
   if (!user) return null;
 
-  const equity = state.portfolio?.equity ?? 0;
-  const initialEngineCapital = 75000;
-  const sessionPnlPct = initialEngineCapital > 0 ? (equity - initialEngineCapital) / initialEngineCapital : 0;
-  const userEquity = user.virtual_capital_inr * (1 + sessionPnlPct);
-  const userPnl = userEquity - user.virtual_capital_inr;
+  const userEquity = user.virtual_capital_inr;
+  const userPnl = 0;
+  const sessionPnlPct = 0;
 
   const saveCapital = async () => {
     if (capital < 25000 || capital > 500000) { setErr("Must be between ₹25,000 and ₹5,00,000"); return; }

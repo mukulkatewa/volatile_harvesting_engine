@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
@@ -21,16 +22,18 @@ _INDEX_HTML: str | None = None
 
 load_env_file()
 
-app = FastAPI(title="Volatility Harvesting Engine")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await runtime.start_feed()
+    yield
+
+
+app = FastAPI(title="Volatility Harvesting Engine", lifespan=lifespan)
 runtime = PlatformRuntime.from_project_root()
 
 app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-
-@app.on_event("startup")
-async def startup() -> None:
-    await runtime.start_feed()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -75,7 +78,7 @@ async def api_config() -> dict:
 
 
 @app.post("/api/control/pause")
-async def pause_automation() -> dict:
+async def pause_automation(_claims=Depends(require_auth)) -> dict:
     runtime.risk_guard.automation_paused = True
     runtime.state.controls.automation_paused = True
     runtime.state.append_event(event("control", "Automation paused", "warning"))
@@ -84,7 +87,7 @@ async def pause_automation() -> dict:
 
 
 @app.post("/api/control/resume")
-async def resume_automation() -> dict:
+async def resume_automation(_claims=Depends(require_auth)) -> dict:
     runtime.risk_guard.automation_paused = False
     runtime.risk_guard.kill_switch = False
     runtime.risk_guard.kill_switch_reason = None
@@ -98,7 +101,7 @@ async def resume_automation() -> dict:
 
 
 @app.post("/api/control/kill")
-async def activate_kill_switch() -> dict:
+async def activate_kill_switch(_claims=Depends(require_auth)) -> dict:
     runtime.risk_guard.kill_switch = True
     runtime.risk_guard.kill_switch_reason = "manual_kill"
     runtime.state.controls.kill_switch = True
@@ -110,14 +113,14 @@ async def activate_kill_switch() -> dict:
 
 
 @app.post("/api/control/reset-paper")
-async def reset_paper() -> dict:
+async def reset_paper(_claims=Depends(require_auth)) -> dict:
     runtime.reset_paper()
     await runtime._broadcast_state()
     return runtime.state.snapshot()
 
 
 @app.post("/api/control/demo-fill")
-async def demo_fill() -> dict:
+async def demo_fill(_claims=Depends(require_auth)) -> dict:
     if not runtime.state.quotes:
         return runtime.state.snapshot()
     symbol = sorted(runtime.state.quotes)[0]
@@ -148,6 +151,7 @@ async def demo_fill() -> dict:
 @app.get("/dashboard/{rest:path}", response_class=HTMLResponse)
 @app.get("/profile", response_class=HTMLResponse)
 @app.get("/profile/{rest:path}", response_class=HTMLResponse)
+@app.get("/auth/callback", response_class=HTMLResponse)
 async def spa_fallback() -> HTMLResponse:
     global _INDEX_HTML
     if _INDEX_HTML is None:
@@ -205,24 +209,25 @@ async def run_monte_carlo(req: MonteCarloRequest) -> dict:
     if bars.empty:
         raise HTTPException(status_code=400, detail=f"no bars found for symbol {symbol}")
 
-    strategy = AdaptiveGridStrategy(
-        config=AdaptiveGridConfig(
-            symbol_capital=req.initial_capital * 0.70,
-            force_exit_time=time(15, 10),
-        ),
-        symbol=symbol,
-    )
-    backtester = EventDrivenBacktester(strategy=strategy, initial_cash=req.initial_capital)
-    backtester.run(bars)
-
-    trades = backtester.ledger.trades
-    if len(trades) < 10:
-        raise HTTPException(
-            status_code=400,
-            detail=f"backtest produced only {len(trades)} trades — need at least 10",
+    def _run() -> tuple:
+        strategy = AdaptiveGridStrategy(
+            config=AdaptiveGridConfig(
+                symbol_capital=req.initial_capital * 0.70,
+                force_exit_time=time(15, 10),
+            ),
+            symbol=symbol,
         )
+        bt = EventDrivenBacktester(strategy=strategy, initial_cash=req.initial_capital)
+        bt.run(bars)
+        trades = bt.ledger.trades
+        if len(trades) < 10:
+            raise ValueError(f"backtest produced only {len(trades)} trades — need at least 10")
+        return mc_run(trades, initial_capital=req.initial_capital, n_sims=req.n_sims)
 
-    result = mc_run(trades, initial_capital=req.initial_capital, n_sims=req.n_sims)
+    try:
+        result = await asyncio.to_thread(_run)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
         "var_95": result.var_95,
         "cvar_95": result.cvar_95,
@@ -273,7 +278,8 @@ async def run_walk_forward(
         raise HTTPException(status_code=400, detail=f"no bars found for symbol {sym}")
 
     try:
-        result = wf_run(
+        result = await asyncio.to_thread(
+            wf_run,
             bars,
             sym,
             train_days=train_days,
@@ -385,12 +391,13 @@ async def ws_state(websocket: WebSocket) -> None:
     await websocket.accept()
     runtime.subscribers.add(websocket)
     try:
-        try:
-            await websocket.send_json(runtime.state.snapshot())
-        except Exception:
-            runtime.subscribers.discard(websocket)
-            return
+        await websocket.send_json(runtime.state.snapshot())
         while True:
-            await asyncio.sleep(30)
+            try:
+                await asyncio.wait_for(websocket.receive(), timeout=30)
+            except asyncio.TimeoutError:
+                pass  # keepalive tick — client still connected
+    except Exception:
+        pass
     finally:
         runtime.subscribers.discard(websocket)

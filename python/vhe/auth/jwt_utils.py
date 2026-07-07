@@ -15,6 +15,9 @@ class UserClaims:
 
 
 def create_token(user_id: int, email: str, name: str) -> str:
+    secret = os.environ.get("JWT_SECRET")
+    if not secret:
+        raise KeyError("JWT_SECRET not configured in .env")
     payload = {
         "sub": str(user_id),
         "email": email,
@@ -23,7 +26,7 @@ def create_token(user_id: int, email: str, name: str) -> str:
     }
     return jwt.encode(
         payload,
-        os.environ["JWT_SECRET"],
+        secret,
         algorithm=os.environ.get("JWT_ALGORITHM", "HS256"),
     )
 
